@@ -36,6 +36,13 @@ app.use(express.json())
 //     res.send(result)
 // })
 
+const accountRoutes = require('./src/routes/account')
+const postRoutes = require('./src/routes/post')
+const commentRoutes = require('./src/routes/comment')
+app.use("/account", accountRoutes)
+app.use("/post", postRoutes)
+app.use("/comment", commentRoutes)
+
 app.get("/", (req, res) => {
     res.send(`Hello World!`)
 })
@@ -68,177 +75,6 @@ app.post("/login", (req, res) => {
         res.send(e.message)
     }
 })
-
-//회원 가입
-app.post("/account", (req, res) => {
-    try{
-        const { id, pw, name, birth, phoneNumber, email, nickname, gender} = req.body
-        const result = {
-            "success" : false
-        }
-        const regId =  /^(?=.*\d)(?=.*[a-z])[0-9a-z]{8,12}$/
-        const regPw = /^(?=.*[a-zA-z])(?=.*[0-9])(?=.*[$`~!@$!%*#^?&\\(\\)\-_=+]).{8,16}$/
-        const regNum = /^\d{3}-\d{3,4}-\d{4}$/
-        const regEmail = /^[a-z0-9]+@[a-z]+\.[a-z]{2,3}$/
-        const regBirth = /^\d{4}-\d{2}-\d{2}$/
-
-
-        if(!regId.test(id)){
-            throw new Error("아이디를 다시 확인해주세요")
-        }
-        if(!regPw.test(pw)){
-            throw new Error("비밀번호를 다시 확인해주세요")
-        }
-        if(name.legnth > 12 || name.legnth < 1){
-            throw new Error("이름을 다시 확인해주세요")
-        }
-        if(!regBirth.test(birth)){
-            throw new Error("생년월일을 다시 확인해주세요")
-        }
-        if(!regNum.test(phoneNumber)){
-            throw new Error("전화번호를 다시 확인해주세요")
-        }
-        if(!regEmail.test(email)){
-            throw new Error("이메일을 다시 확인해주세요")
-        }
-        if(nickname.legnth > 12 || nickname.legnth < 1){
-            throw new Error("닉네임을 다시 확인해주세요")
-        }
-        if(gender != "Male" && gender != "Female"){
-            throw new Error("성별을 다시 확인해주세요")
-        }
-        
-
-        //db 연결
-        
-        res.send({result})
-
-    }catch(e){
-        res.send(e.message)
-    }
-})
-
-//회원 탈퇴
-app.delete("/account/:account-id", (req, res) => {
-    try{
-        const { id } = req.params
-        const result = {
-            "success" : false
-        }
-        const regId =  /^(?=.*\d)(?=.*[a-z])[0-9a-z]{8,12}$/
-
-        if(!regId.test(id)){
-            throw new Error("아이디를 다시 확인해주세요")
-        }
-
-    }catch(e){
-        res.send(e.message)
-    } 
-})
-
-//아이디 찾기
-
-//비밀번호 찾기
-
-//내 정보 보기
-
-//내 정보 수정
-app.put("/account/:account-id", (req, res) => {
-    try{
-
-    }catch(e){
-        res.send(e.message)
-    }
-})
-
-//게시글 쓰기
-app.post("post", (req, res) => {
-    try{
-        const { title, content } = req.body
-
-    }catch(e){
-        res.send(e.message)
-    }
-})
-
-//게시글 읽기
-app.get("post/:post-id", (req, res) => {
-    try{
-        const { postId } = req.params
-
-    }catch(e){
-        res.send(e.message)
-    }
-})
-
-//게시글 수정
-app.post("post/:post-id", (req, res) => {
-    try{
-        const { postId } = req.params
-        const { title, content } = req.body
-
-    }catch(e){
-        res.send(e.message)
-    }
-})
-
-//게시글 삭제
-app.delete("post/:post-id", (req, res) => {
-    try{
-        const { postId } = req.params
-
-    }catch(e){
-        res.send(e.message)
-    }
-})
-
-//게시글 전체 목록
-app.get("post", (req, res) => {
-    try{
-
-    }catch(e){
-        res.send(e.message)
-    }
-})
-
-//댓글 쓰기
-app.post("post/:post-id/comment", (req, res) => {
-    try{
-        const { postId } = req.params
-    }catch(e){
-        res.send(e.message)
-    }
-})
-
-//댓글 읽기
-app.get("post/:post-id/comment", (req, res) => {
-    try{
-        const { postId } = req.params
-
-    }catch(e){
-        res.send(e.message)
-    }
-})
-
-//댓글 수정
-app.put("post/:post-id/comment/:comment-id", (req, res) => {
-    try{
-        const { postId, commentId } = req.params
-    }catch(e){
-        res.send(e.message)
-    }
-})
-
-//댓글 삭제
-app.delete("post/:post-id/comment/:comment-id", (req, res) => {
-    try{
-        const { postId, commentId } = req.params
-
-    }catch(e){
-        res.send(e.message)
-    }
-})
-
 
 
 //Web Server 실행 코드
