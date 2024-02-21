@@ -1,0 +1,14 @@
+{
+  "name": "18_backend",
+  "version": "1.0.0",
+  "description": "백엔드 서버 과정 수업때 사용하는 프로젝트",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "박윤서",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
