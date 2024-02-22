@@ -55,9 +55,9 @@ router.post("/", (req, res) => {
 })
 
 //회원 탈퇴
-router.delete("/:account", (req, res) => {
+router.delete("/:id", (req, res) => {
     try{
-        const { id } = req.params.account
+        const { id } = req.params.id
         const result = {
             "success" : false
         }

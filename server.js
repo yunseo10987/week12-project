@@ -36,12 +36,31 @@ app.use(express.json())
 //     res.send(result)
 // })
 
+const session = require("express-session")
+const MemoryStore = require("memorystore")(session)
+
+app.use(
+    session({
+        secret: "haidilao",
+        resave: false,
+        saveUninitialized: true,
+        store: new MemoryStore({
+            checkPeriod: 60 * 60 * 1000
+        }),
+        cookie:{
+            maxAge: 60 * 60 * 1000
+        },
+    })
+)
 const accountRoutes = require('./src/routes/account')
 const postRoutes = require('./src/routes/post')
 const commentRoutes = require('./src/routes/comment')
+
+
 app.use("/account", accountRoutes)
 app.use("/post", postRoutes)
 app.use("/comment", commentRoutes)
+
 
 app.get("/", (req, res) => {
     res.send(`Hello World!`)
@@ -65,14 +84,31 @@ app.post("/login", (req, res) => {
         }
 
         //db 연결
-        if(id === "stageus1234" && pw === "qwer1234!"){
+        if(id == "stageus1234" && pw == "qwer1234!"){
             result.success = true
+            let idx = 1
+            req.session.idx = idx
+            let sessionIdx = req.session.idx
+            res.send({result , id, pw , sessionIdx })
+            res.redirect("/")
         }
-        
-        res.send({result , id})
+        else{
+            res.send('<script>alert("아이디 혹은 비밀번호가 틀렸습니다")</script>')
+        }
 
     }catch(e){
-        res.send(e.message)
+        res.send(`로그인 실패 ${e.message} 에러 발생`)
+    }
+})
+
+app.delete("/logout", (req, res) => {
+    try{
+        if(req.session.idx){
+            req.session.destroy();
+            res.redirect("/")
+        }
+    }catch(e){
+        res.send(`로그아웃 에러 발생`)
     }
 })
 
