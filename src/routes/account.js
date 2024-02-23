@@ -84,8 +84,63 @@ router.delete("/:id", (req, res) => {
 })
 
 //아이디 찾기
+router.post("/id", (req, res) =>{
+    try{
+        const { phoneNumber, email } = req.query
+        let id = null
+        const regNum = /^\d{3}-\d{3,4}-\d{4}$/
+        const regEmail = /^[a-z0-9]+@[a-z]+\.[a-z]{2,3}$/
+
+        if(!regEmail.test(email)){
+            throw new Error("이메일을 다시 확인해주세요")
+        }
+        if(!regNum.test(phoneNumber)){
+            throw new Error("전화번호를 다시 확인해주세요")
+        }
+
+        //db 연동
+
+        //id = "stageus1234"
+        
+        if(!id){
+            throw new Error("일치하는 아이디가 없습니다")
+        }
+        res.send(id)
+
+    }catch(e){
+        res.send(e.message)
+    }
+})
 
 //비밀번호 찾기
+router.post("/pw", (req, res) =>{
+    try{
+        const { id, phoneNumber } = req.query
+        let pw = null
+        const regId =  /^(?=.*\d)(?=.*[a-z])[0-9a-z]{8,12}$/
+        const regNum = /^\d{3}-\d{3,4}-\d{4}$/
+
+        if(!regId.test(id)){
+            throw new Error("아이디를 다시 확인해주세요")
+        }
+        if(!regNum.test(phoneNumber)){
+            throw new Error("전화번호를 다시 확인해주세요")
+        }
+       
+
+        //db 연동
+
+        //pw = "qwer1234!"
+        
+        if(!pw){
+            throw new Error("일치하는 비밀번호가 없습니다")
+        }
+        res.send(pw)
+
+    }catch(e){
+        res.send(e.message)
+    }
+})
 
 //내 정보 보기
 router.get("/info", (req, res) => {
