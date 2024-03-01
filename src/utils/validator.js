@@ -1,4 +1,4 @@
-let checkValidation = function(option){
+let validateAccount = function(option){
     const regId =  /^(?=.*\d)(?=.*[a-z])[0-9a-z]{8,12}$/
     const regPw = /^(?=.*[a-zA-z])(?=.*[0-9])(?=.*[$`~!@$!%*#^?&\\(\\)\-_=+]).{8,16}$/
     const regNum = /^\d{3}-\d{3,4}-\d{4}$/
@@ -38,7 +38,6 @@ let checkValidation = function(option){
         }
     }
 
-    
     if(option.email){
         if(!regEmail.test(option.email)){
             throw new Error("이메일을 다시 확인해주세요")
@@ -59,4 +58,28 @@ let checkValidation = function(option){
 
 }
 
-module.exports.validation = checkValidation
+let validateSession = function (sessionIdx){
+    if(!sessionIdx){
+        throw new Error("로그인을 해주세요.")
+    }
+}
+
+let validatePost = function (option){
+    if(option.title.length < 1 || option.title.length > 30){
+        throw new Error("제목은 30자 이내로 작성하세요")
+    }
+    if(option.content.length < 1 || option.content.length > 1500){
+        throw new Error("내용은 1500자 이내로 작성하세요")
+    }
+}
+
+let validateComment = function (content){
+    if(content.length < 1 || content.length > 500){
+        throw new Error("내용은 500자 이내로 작성하세요")
+    }
+}
+
+module.exports.account = validateAccount
+module.exports.session = validateSession
+module.exports.post = validatePost
+module.exports.comment = validateComment
