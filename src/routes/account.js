@@ -1,11 +1,28 @@
 // const express  = require("express") 
 // const router = express.Router();
 const router = require("express").Router()
-const check = require('../utils/validator')
+const validator = require('../utils/validator')
+const mariadb = require("../../database/connect/mariadb")
+
+const query = function (sql, params=[]){
+    return new Promise((resolve, reject) => {
+        mariadb.query(sql, params, (err, rows) => {
+            if(err){
+                reject(err)
+            }else{
+                resolve(rows)
+            }
+    
+            
+        })
+    })
+}
+
 //로그인
-router.post("/login", (req, res) => {
+router.post("/login", async (req, res) => {
     
     const {id, pw} = req.body
+    const sql = "SELECT idx, nickname FROM account WHERE id = ? AND password = ?"
     const result = {
         "success" : false,
         "message" : "",
@@ -13,24 +30,18 @@ router.post("/login", (req, res) => {
     }        
 
     try{
-        check.validation({id:id, pw:pw})
+        validator.account({id:id, pw:pw})
 
-        //db 연결
-        if(id == "stageus1234" && pw == "qwer1234!"){
-            result.success = true
-            result.data = {
-                "id": id,
-                "pw": pw
-            }
-            let idx = 1
-            req.session.idx = idx
-            let sessionIdx = req.session.idx
+        const account = await query(sql, [id, pw])
+        if(account == ""){
+            throw new Error("아이디/비밀번호가 일치하지 않습니다.")
         }
-        else{
-            result.message = "아이디 혹은 비밀번호가 틀렸습니다."
-        }
+        result.success = true
+        result.data = account
+        req.session.idx = account[0].idx
 
     }catch(e){
+        console.log(e)
         result.message = e.message
     }finally{
         res.send(result)
@@ -43,14 +54,13 @@ router.delete("/logout", (req, res) => {
         "success" : false,
         "message" : ""
     }
+
     try{
-        if(!req.session.idx){
-            result.message = "로그인을 해주세요"
-        }
-        else{
-            req.session.destroy()
-            result.success = true
-        }
+        validator.session(req.session.idx)
+        
+        req.session.destroy()
+        result.success = true
+        
     }catch(e){
         result.message = e.message
     }finally{
@@ -59,18 +69,20 @@ router.delete("/logout", (req, res) => {
 })
 
 //회원 가입
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
     const { id, pw, name, birth, phoneNumber, email, nickname, gender} = req.body
+    const sql = "INSERT INTO account(id, password, name, birth_year, phone_number, email, nickname, gender) VALUES(?, ?, ?, ?, ?, ?, ?, ?)"
     const result = {
         "success": false,
         "message": ""
     }
 
     try{
-        check.validation({id:id, pw:pw, name:name, birth:birth, phoneNumber:phoneNumber, email:email, nickname:nickname, gender:gender})
+        validator.account({id:id, pw:pw, name:name, birth:birth, phoneNumber:phoneNumber, email:email, nickname:nickname, gender:gender})
 
         //db 연결
-        
+        const account = await query(sql, [id, pw, name, birth, phoneNumber, email, nickname, gender] )
+
         // 결과 전송
         result.success = true
 
@@ -82,27 +94,23 @@ router.post("/", (req, res) => {
 })
 
 //회원 탈퇴
-router.delete("/:idx", (req, res) => {
+router.delete("/:idx", async (req, res) => {
     const { idx } = req.params
+    const sql = "DELETE FROM account WHERE idx = ?"
     const result = {
         "success" : false
     }
 
     try{
-        if(!req.session.idx){
-            throw new Error("로그인을 해주세요.")
+        //validator.session(req.session.idx)
+        if(req.session.idx != idx){
+            throw new Error("제대로 된 idx 값 전달")
         }
+        const account = await query(sql, idx)
         
+        result.success = true
+        req.session.destroy();
 
-        //db 연결
-
-        if(0){
-            result.message = "존재하지 않는 회원입니다."
-        }else{
-            result.success = true
-            req.session.destroy();
-        }
-        
     }catch(e){
         result.message = e.message
         
@@ -113,8 +121,9 @@ router.delete("/:idx", (req, res) => {
 
 
 //아이디 찾기
-router.get("/find-id", (req, res) =>{
+router.get("/find-id", async (req, res) =>{
     const { phoneNumber, email } = req.query
+    const sql = "SELECT id FROM account WHERE email =? AND phone_number =?"
     const result = {
         "success": false,
         "message": "",
@@ -122,16 +131,16 @@ router.get("/find-id", (req, res) =>{
     }
 
     try{
-        check.validation({phoneNumber: phoneNumber, email:email})
+        validator.account({phoneNumber: phoneNumber, email:email})
         
         //db 연동
-
-        //id = "stageus1234"
-        
-        if(result.data == ""){
+        const account = await query(sql, [email, phoneNumber])
+        if(account == ""){
             throw new Error("일치하는 아이디가 없습니다.")
         }
+
         result.success = true
+        result.data = account
 
     }catch(e){
         result.message = e.message
@@ -141,25 +150,24 @@ router.get("/find-id", (req, res) =>{
 })
 
 //비밀번호 찾기
-router.get("/find-pw", (req, res) =>{
+router.get("/find-pw", async (req, res) =>{
     const { id, phoneNumber } = req.query
+    const sql = "SELECT password FROM account WHERE id =? AND phone_number =?"
     const result = {
         "success": false,
         "message": "",
         "data": ""
     }
     try{
-        check.validation({id:id, phoneNumber:phoneNumber})
+        validator.account({id:id, phoneNumber:phoneNumber})
        
-
-        //db 연동
-
-        //pw = "qwer1234!"
-        
-        if(result.data == ""){
+        const account = await query(sql, [id, phoneNumber])
+        if(account == ""){
             throw new Error("일치하는 비밀번호가 없습니다")
         }
+        
         result.success = true
+        result.data = account
 
     }catch(e){
         result.message = e.message
@@ -169,32 +177,24 @@ router.get("/find-pw", (req, res) =>{
 })
 
 //내 정보 보기
-router.get("/", (req, res) => {
+router.get("/", async (req, res) => {
+    const sql = "SELECT id, password, name, birth_year, phone_number, email, nickname, gender FROM account WHERE account.idx = ?"
     const result = {
         "success": false,
         "message": "",
         "data": ""
     }
     try{
-        if(!req.session.idx){
-            throw new Error("로그인을 해주세요.")
+        validator.session(req.session.idx)
+
+        const account = await query(sql, req.session.idx)
+        
+        if(account == ""){
+            throw new Error("일치하는 정보가 없습니다.")
         }
-
-        let userInfo = {}
-
-        userInfo = {
-            "id": "아이디",
-            "name": "이름",
-            "nickname": "닉네임"
-        }
-
-        if(0){
-            throw new Error("존재하지 않는 회원입니다.")
-        }else{
-            result.success = true
-            result.data = userInfo
-        }
-
+        result.success = true
+        result.data = account
+        
     }catch(e){
         result.message = e.message
     }finally{
@@ -204,27 +204,22 @@ router.get("/", (req, res) => {
 
 
 //내 정보 수정
-router.put("/", (req, res) => {
+router.put("/", async (req, res) => {
     const { id, pw, name, birth, phoneNumber, email, nickname, gender} = req.body
+    const sql = "UPDATE account SET id =?, password=?, name=?, birth_year=?, phone_number=?, email=?, nickname=?, gender=? WHERE idx =?"
     const result = {
         "success": false,
         "message": ""
     }
 
     try{
-        if(!req.session.idx){
-            throw new Error("로그인을 해주세요.")
-        }
+        validator.session(req.session.idx)
         
-        check.validation({id:id, pw:pw, name:name, birth:birth, phoneNumber:phoneNumber, email:email, nickname:nickname, gender:gender})
+        validator.account({id:id, pw:pw, name:name, birth:birth, phoneNumber:phoneNumber, email:email, nickname:nickname, gender:gender})
         //db 연결
+        const account = await query(sql, [id, pw, name, birth, phoneNumber, email, nickname, gender, req.session.idx])
 
-        if(0){
-
-        }else{
-            result.success = true
-        }
-       
+        result.success = true
 
     }catch(e){
         result.message = e.message

@@ -4,6 +4,8 @@ const cors = require("cors")
 
 const app = express()
 const port = 8000
+const mariadb = require("./database/connect/mariadb")
+mariadb.connect()
 
 //우리가 통신에서 json으로 값을 주고 받긴함
 //json은 원래 통신에 사용할 수 없는 자료 구조임
@@ -53,7 +55,7 @@ app.use(
 const accountApi = require('./src/routes/account') // 외부 js 파일 import
 const postApi = require('./src/routes/post')
 const commentApi = require('./src/routes/comment')
-const check = require('./src/utils/validator')
+const validator = require('./src/utils/validator')
 
 
 // app.use("/", )

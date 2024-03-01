@@ -51,7 +51,7 @@ let validateAccount = function(option){
     }
     
     if(option.gender){
-        if(option.gender != "Male" && option.gender != "Female"){
+        if(option.gender != "M" && option.gender != "W"){
             throw new Error("성별을 다시 확인해주세요")
         }
     }

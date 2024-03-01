@@ -1,9 +1,25 @@
 const express  = require("express") 
 const router = express.Router();
 const validator = require('../utils/validator')
+const mariadb = require("../../database/connect/mariadb")
+
+const query = function (sql, params=[]){
+    return new Promise((resolve, reject) => {
+        mariadb.query(sql, params, (err, rows) => {
+            if(err){
+                reject(err)
+            }else{
+                resolve(rows)
+            }
+    
+            
+        })
+    })
+}
 
 //댓글 쓰기
-router.post("/:postIdx", (req, res) => {
+router.post("/:postIdx", async (req, res) => {
+    const sql = "INSERT INTO comment(content, post_idx, account_idx) VALUES(?, ?, ?)"
     const { postIdx } = req.params
     const { content } = req.body
     const result = {
@@ -11,10 +27,10 @@ router.post("/:postIdx", (req, res) => {
         "message": ""
     }
     try{
-        //validator.session(req.session.idx)
+        validator.session(req.session.idx)
         validator.comment(content)
-        //db 연동
 
+        const comment = await query(sql, [content, postIdx, req.session.idx])
         result.success = true
 
     }catch(e){
@@ -25,7 +41,8 @@ router.post("/:postIdx", (req, res) => {
 })
 
 //댓글 읽기
-router.get("/:postIdx", (req, res) => {
+router.get("/:postIdx", async (req, res) => {
+    const sql = "SELECT comment.content, comment.date, account.nickname, comment.account_idx, comment.idx FROM comment,account WHERE comment.post_idx = ? AND comment.account_idx = account.idx ORDER BY comment.idx"
     const { postIdx } = req.params
     const result = {
         "success": false,
@@ -33,15 +50,10 @@ router.get("/:postIdx", (req, res) => {
         "data": ""
     }
     try{
-        
-        let commentList = {}
-        commentList = {
-            "writer": "댓글 작성자",
-            "content": "내용"
-        }
+        const comment = await query(sql, postIdx)
 
         result.success = true
-        result.data = commentList
+        result.data = comment
 
     }catch(e){
         result.message = e.message
@@ -51,7 +63,8 @@ router.get("/:postIdx", (req, res) => {
 })
 
 //댓글 수정
-router.put("/:commentIdx", (req, res) => {
+router.put("/:commentIdx", async (req, res) => {
+    const sql = "UPDATE comment SET content=? WHERE idx = ?"
     const { commentIdx } = req.params
     const { content } = req.body
     const result = {
@@ -63,8 +76,7 @@ router.put("/:commentIdx", (req, res) => {
         validator.session(req.session.idx)
         validator.comment(content)
 
-        //db 연동
-
+        const comment = await query(sql, [content, commentIdx])
         result.success = true
        
     }catch(e){
@@ -75,7 +87,8 @@ router.put("/:commentIdx", (req, res) => {
 })
 
 //댓글 삭제
-router.delete("/:commentIdx", (req, res) => {
+router.delete("/:commentIdx", async (req, res) => {
+    const sql = "DELETE FROM comment WHERE idx = ?"
     const { commentIdx } = req.params
     const result = {
         "success": false,
@@ -83,8 +96,8 @@ router.delete("/:commentIdx", (req, res) => {
     }
     try{
         validator.session(req.session.idx)
-        //db 연동
-
+        
+        const comment = await query(sql, commentIdx)
         result.success = true
         
     }catch(e){
