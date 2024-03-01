@@ -23,7 +23,8 @@ router.post("/:postId", (req, res) => {
         result.success = true
         res.send(result)
     }catch(e){
-        res.send(e.message)
+        result.message = e.message
+        res.send(result)
     }
 })
 
@@ -65,7 +66,8 @@ router.put("/:commentId", (req, res) => {
         result.success = true
         res.send(result)
     }catch(e){
-        res.send(e.message)
+        result.message = e.message
+        res.send(result)
     }
 })
 
@@ -87,7 +89,8 @@ router.delete("/:commentId", (req, res) => {
         result.success = true
         res.send(result)
     }catch(e){
-        res.send(e.message)
+        result.message = e.message
+        res.send(result)
     }
 })
 

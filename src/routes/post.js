@@ -5,7 +5,7 @@ const router = express.Router();
 router.post("/", (req, res) => {
     try{
         if(!req.session.idx){
-            //res.redirect("/")
+            throw new Error("로그인을 해주세요.")
         }
         const { title, content } = req.body
         const result = {
@@ -23,7 +23,8 @@ router.post("/", (req, res) => {
         res.send(result)
 
     }catch(e){
-        res.send(e.message)
+        result.message = e.message
+        res.send(result)
     }
 })
 
@@ -39,7 +40,7 @@ router.get('/:postId', (req, res) => {
         //     "writer": "작성자"
         // }
         if(!post){
-            res.send('<script>alert("해당 게시글이 없거나 삭제되었습니다")</script>')
+            throw new Error("해당 게시글이 없거나 삭제되었습니다")
         }
         res.send(post)
         
@@ -58,7 +59,7 @@ router.put("/:postId", (req, res) => {
         }
 
         if(!req.session.idx){
-            //res.redirect("/login")
+            throw new Error("로그인을 해주세요.")
         }
 
         if(title.length < 1 || title.length > 30){
@@ -74,7 +75,8 @@ router.put("/:postId", (req, res) => {
         res.send(result)  
 
     }catch(e){
-        res.send(e.message)
+        result.message = e.message
+        res.send(result)
     }
 })
 
@@ -86,7 +88,7 @@ router.delete("/:postId", (req, res) => {
             "success" : false
         }
         if(!req.session.idx){
-            //res.redirect("/login")
+            throw new Error("로그인을 해주세요.")
         }
 
         //db 연동
@@ -94,7 +96,8 @@ router.delete("/:postId", (req, res) => {
         result.success = true
         res.send(result)  
     }catch(e){
-        res.send(e.message)
+        result.message = e.message
+        res.send(result)
     }
 })
 
