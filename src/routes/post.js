@@ -1,37 +1,37 @@
 const express  = require("express") 
 const router = express.Router();
+const validator = require('../utils/validator')
 
 //게시글 쓰기
 router.post("/", (req, res) => {
-    try{
-        if(!req.session.idx){
-            throw new Error("로그인을 해주세요.")
-        }
-        const { title, content } = req.body
-        const result = {
-            "success" : false
-        }
+    const { title, content } = req.body
+    const result = {
+        "success" : false,
+        "message": ""
+    }
 
-        if(title.length < 1 || title.length > 30){
-            throw new Error("제목은 30자 이내로 작성하세요")
-        }
-        if(content.length < 1 || content.length > 1500){
-            throw new Error("내용은 1500자 이내로 작성하세요")
-        }
-        
+    try{
+        validator.session(req.session.idx)
+        validator.post({title:title, content:content})
+           
         result.success = true
-        res.send(result)
 
     }catch(e){
         result.message = e.message
+    }finally{
         res.send(result)
     }
 })
 
 //게시글 읽기
-router.get('/:postId', (req, res) => {
+router.get('/:postIdx', (req, res) => {
+    const { postIdx } = req.params
+    const result = {
+        "success" : false,
+        "message": ""
+    }
     try{
-        const { postId } = req.params
+        
         let post
         // post = {
         //     "title": "제목",
@@ -42,72 +42,75 @@ router.get('/:postId', (req, res) => {
         if(!post){
             throw new Error("해당 게시글이 없거나 삭제되었습니다")
         }
-        res.send(post)
+        result.success = true
         
     }catch(e){
-        res.send(e.message)
+        result.message = e.message
+    }finally{
+        res.send(result)
     }
 })
 
 //게시글 수정
-router.put("/:postId", (req, res) => {
+router.put("/:postIdx", (req, res) => {
+    const { postIdx } = req.params
+    const { title, content } = req.body
+    const result = {
+        "success" : false,
+        "message": ""
+    }
     try{
-        const { postId } = req.params
-        const { title, content } = req.body
-        const result = {
-            "success" : false
-        }
-
-        if(!req.session.idx){
-            throw new Error("로그인을 해주세요.")
-        }
-
-        if(title.length < 1 || title.length > 30){
-            throw new Error("제목은 30자 이내로 작성하세요")
-        }
-        if(content.length < 1 || content.length > 1500){
-            throw new Error("내용은 1500자 이내로 작성하세요")
-        }
+        validator.session(req.session.idx)
+        validator.post({title:title, content:content})
 
         //db 연동
 
         result.success = true
-        res.send(result)  
 
     }catch(e){
         result.message = e.message
+    }finally{
         res.send(result)
     }
 })
 
 //게시글 삭제
-router.delete("/:postId", (req, res) => {
+router.delete("/:postIdx", (req, res) => {
+    const { postIdx } = req.params
+    const result = {
+        "success" : false,
+        "message": ""
+    }
     try{
-        const { postId } = req.params
-        const result = {
-            "success" : false
-        }
-        if(!req.session.idx){
-            throw new Error("로그인을 해주세요.")
-        }
+        validator.session(req.session.idx)
 
         //db 연동
 
-        result.success = true
-        res.send(result)  
+        result.success = true 
+        
     }catch(e){
         result.message = e.message
+    }finally{
         res.send(result)
     }
 })
 
 //게시글 전체 목록
-router.get("/", (req, res) => {
+router.get("/all", (req, res) => {
+    const result = {
+        "success" : false,
+        "message": ""
+    }
     try{
         let postList = {}
-        res.send(postList)
+
+        result.data = postList
+        result.success = true
+
     }catch(e){
-        res.send(e.message)
+        result.message = e.message
+    }finally{
+        res.send(result)
     }
 })
 
