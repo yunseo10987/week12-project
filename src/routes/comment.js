@@ -1,95 +1,95 @@
 const express  = require("express") 
 const router = express.Router();
+const validator = require('../utils/validator')
 
 //댓글 쓰기
-router.post("/:postId", (req, res) => {
+router.post("/:postIdx", (req, res) => {
+    const { postIdx } = req.params
+    const { content } = req.body
+    const result = {
+        "success": false,
+        "message": ""
+    }
     try{
-        const { postId } = req.params
-        const { content } = req.body
-        const { writer } = req.session.idx
-        const result = {
-            "success" : false
-        }
-
-        if(content.length < 1 || content.length > 500){
-            throw new Error("내용은 500자 이내로 작성하세요")
-        }
-        if(!writer){
-            throw new Error("로그인을 하고 작성하실 수 있습니다.")
-        }
-
+        //validator.session(req.session.idx)
+        validator.comment(content)
         //db 연동
 
         result.success = true
-        res.send(result)
+
     }catch(e){
         result.message = e.message
+    }finally{
         res.send(result)
     }
 })
 
 //댓글 읽기
-router.get("/:postId", (req, res) => {
+router.get("/:postIdx", (req, res) => {
+    const { postIdx } = req.params
+    const result = {
+        "success": false,
+        "message": "",
+        "data": ""
+    }
     try{
-        const { postId } = req.params
+        
         let commentList = {}
         commentList = {
             "writer": "댓글 작성자",
             "content": "내용"
         }
-        res.send(commentList)
+
+        result.success = true
+        result.data = commentList
 
     }catch(e){
-        res.send(e.message)
+        result.message = e.message
+    }finally{
+        res.send(result)
     }
 })
 
 //댓글 수정
-router.put("/:commentId", (req, res) => {
+router.put("/:commentIdx", (req, res) => {
+    const { commentIdx } = req.params
+    const { content } = req.body
+    const result = {
+        "success": false,
+        "message": ""
+    }
     try{
-        const { commentId } = req.params
-        const { writer } = req.session.idx
-        const { content } = req.body
-        const result = {
-            "success" : false
-        }
-
-        if(content.length < 1 || content.length > 500){
-            throw new Error("내용은 500자 이내로 작성하세요")
-        }
-        if(!writer){
-            throw new Error("로그인을 하고 작성하실 수 있습니다.")
-        }
+        
+        validator.session(req.session.idx)
+        validator.comment(content)
 
         //db 연동
 
         result.success = true
-        res.send(result)
+       
     }catch(e){
         result.message = e.message
+    }finally{
         res.send(result)
     }
 })
 
 //댓글 삭제
-router.delete("/:commentId", (req, res) => {
+router.delete("/:commentIdx", (req, res) => {
+    const { commentIdx } = req.params
+    const result = {
+        "success": false,
+        "message": ""
+    }
     try{
-        const { commentId } = req.params
-        const { writer } = req.session.idx
-        const result = {
-            "success" : false
-        }
-
-        if(!writer){
-            throw new Error("로그인을 하고 작성하실 수 있습니다.")
-        }
-
+        validator.session(req.session.idx)
         //db 연동
 
         result.success = true
-        res.send(result)
+        
     }catch(e){
         result.message = e.message
+    }finally{
         res.send(result)
     }
 })
