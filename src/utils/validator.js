@@ -65,9 +65,12 @@ module.exports = {
         }
     },
 
-    post :  function (sessionIdx){
-        if(!sessionIdx){
-            throw new Error("로그인을 해주세요.")
+    post :  function (option){
+        if(option.title.length < 1 || option.title.length > 30){
+            throw new Error("제목은 30자 이내로 작성하세요")
+        }
+        if(option.content.length < 1 || option.content.length > 1500){
+            throw new Error("내용은 1500자 이내로 작성하세요")
         }
     },
 
