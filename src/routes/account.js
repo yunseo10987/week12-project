@@ -2,27 +2,25 @@
 // const router = express.Router();
 const router = require("express").Router()
 const validator = require('../utils/validator')
-const mariadb = require("../../database/connect/mariadb")
+const client = require("../../database/connect/postgresql")
 
-const query = function (sql, params=[]){
-    return new Promise((resolve, reject) => {
-        mariadb.query(sql, params, (err, rows) => {
-            if(err){
-                reject(err)
-            }else{
-                resolve(rows)
-            }
-    
-            
-        })
-    })
-}
+// const query = function (sql, params=[]){
+//     return new Promise((resolve, reject) => {
+//         mariadb.query(sql, params, (err, rows) => {
+//             if(err){
+//                 reject(err)
+//             }else{
+//                 resolve(rows)
+//             }
+//         })
+//     })
+// }
 
 //로그인
 router.post("/login", async (req, res) => {
     
     const {id, pw} = req.body
-    const sql = "SELECT idx, nickname FROM account WHERE id = ? AND password = ?"
+    const sql = "SELECT idx, nickname FROM backend.account WHERE id = $1 AND password = $2"
     const result = {
         "success" : false,
         "message" : "",
@@ -32,13 +30,13 @@ router.post("/login", async (req, res) => {
     try{
         validator.account({id:id, pw:pw})
 
-        const account = await query(sql, [id, pw])
-        if(account == ""){
+        const account = await client.query(sql, [id, pw])
+        if(!account.rows.length){
             throw new Error("아이디/비밀번호가 일치하지 않습니다.")
         }
         result.success = true
-        result.data = account
-        req.session.idx = account[0].idx
+        result.data = account.rows
+        req.session.idx = account.idx
 
     }catch(e){
         console.log(e)
@@ -71,7 +69,7 @@ router.delete("/logout", (req, res) => {
 //회원 가입
 router.post("/", async (req, res) => {
     const { id, pw, name, birth, phoneNumber, email, nickname, gender} = req.body
-    const sql = "INSERT INTO account(id, password, name, birth_year, phone_number, email, nickname, gender) VALUES(?, ?, ?, ?, ?, ?, ?, ?)"
+    const sql = "INSERT INTO backend.account(id, password, name, birth, phonenumber, email, nickname, gender) VALUES($1, $2, $3, $4, $5, $6, $7, $8)"
     const result = {
         "success": false,
         "message": ""
@@ -81,7 +79,7 @@ router.post("/", async (req, res) => {
         validator.account({id:id, pw:pw, name:name, birth:birth, phoneNumber:phoneNumber, email:email, nickname:nickname, gender:gender})
 
         //db 연결
-        const account = await query(sql, [id, pw, name, birth, phoneNumber, email, nickname, gender] )
+        await client.query(sql, [id, pw, name, birth, phoneNumber, email, nickname, gender])
 
         // 결과 전송
         result.success = true
@@ -94,19 +92,17 @@ router.post("/", async (req, res) => {
 })
 
 //회원 탈퇴
-router.delete("/:idx", async (req, res) => {
-    const { idx } = req.params
-    const sql = "DELETE FROM account WHERE idx = ?"
+router.delete("/", async (req, res) => {
+    
+    const sql = "DELETE FROM backend.account WHERE idx = $1"
     const result = {
         "success" : false
     }
 
     try{
-        //validator.session(req.session.idx)
-        if(req.session.idx != idx){
-            throw new Error("제대로 된 idx 값 전달")
-        }
-        const account = await query(sql, idx)
+        validator.session(req.session.idx)
+        
+        await client.query(sql, req.session.idx)
         
         result.success = true
         req.session.destroy();
@@ -123,7 +119,7 @@ router.delete("/:idx", async (req, res) => {
 //아이디 찾기
 router.get("/find-id", async (req, res) =>{
     const { phoneNumber, email } = req.query
-    const sql = "SELECT id FROM account WHERE email =? AND phone_number =?"
+    const sql = "SELECT id FROM backend.account WHERE email =$1 AND phonenumber =$2"
     const result = {
         "success": false,
         "message": "",
@@ -134,13 +130,13 @@ router.get("/find-id", async (req, res) =>{
         validator.account({phoneNumber: phoneNumber, email:email})
         
         //db 연동
-        const account = await query(sql, [email, phoneNumber])
-        if(account == ""){
+        const account = await client.query(sql, [email, phoneNumber])
+        if(!account.rows.length){
             throw new Error("일치하는 아이디가 없습니다.")
         }
 
         result.success = true
-        result.data = account
+        result.data = account.rows
 
     }catch(e){
         result.message = e.message
@@ -152,7 +148,7 @@ router.get("/find-id", async (req, res) =>{
 //비밀번호 찾기
 router.get("/find-pw", async (req, res) =>{
     const { id, phoneNumber } = req.query
-    const sql = "SELECT password FROM account WHERE id =? AND phone_number =?"
+    const sql = "SELECT password FROM backend.account WHERE id =$1 AND phonenumber =$2"
     const result = {
         "success": false,
         "message": "",
@@ -161,13 +157,13 @@ router.get("/find-pw", async (req, res) =>{
     try{
         validator.account({id:id, phoneNumber:phoneNumber})
        
-        const account = await query(sql, [id, phoneNumber])
-        if(account == ""){
+        const account = await client.query(sql, [id, phoneNumber])
+        if(!account.rows.length){
             throw new Error("일치하는 비밀번호가 없습니다")
         }
         
         result.success = true
-        result.data = account
+        result.data = account.rows
 
     }catch(e){
         result.message = e.message
@@ -178,7 +174,7 @@ router.get("/find-pw", async (req, res) =>{
 
 //내 정보 보기
 router.get("/", async (req, res) => {
-    const sql = "SELECT id, password, name, birth_year, phone_number, email, nickname, gender FROM account WHERE account.idx = ?"
+    const sql = "SELECT id, password, name, birth, phonenumber, email, nickname, gender FROM backend.account WHERE idx = $1"
     const result = {
         "success": false,
         "message": "",
@@ -186,14 +182,14 @@ router.get("/", async (req, res) => {
     }
     try{
         validator.session(req.session.idx)
-
-        const account = await query(sql, req.session.idx)
+        req.session.idx = 4
+        const account = await client.query(sql, [req.session.idx])
         
-        if(account == ""){
+        if(!account.rows.length){
             throw new Error("일치하는 정보가 없습니다.")
         }
         result.success = true
-        result.data = account
+        result.data = account.rows
         
     }catch(e){
         result.message = e.message
@@ -206,7 +202,7 @@ router.get("/", async (req, res) => {
 //내 정보 수정
 router.put("/", async (req, res) => {
     const { id, pw, name, birth, phoneNumber, email, nickname, gender} = req.body
-    const sql = "UPDATE account SET id =?, password=?, name=?, birth_year=?, phone_number=?, email=?, nickname=?, gender=? WHERE idx =?"
+    const sql = "UPDATE backend.account SET id =$1, password=$2, name=$3, birth=$4, phonenumber=$5, email=$6, nickname=$7, gender=$8 WHERE idx =$9"
     const result = {
         "success": false,
         "message": ""
@@ -217,7 +213,7 @@ router.put("/", async (req, res) => {
         
         validator.account({id:id, pw:pw, name:name, birth:birth, phoneNumber:phoneNumber, email:email, nickname:nickname, gender:gender})
         //db 연결
-        const account = await query(sql, [id, pw, name, birth, phoneNumber, email, nickname, gender, req.session.idx])
+        await client.query(sql, [id, pw, name, birth, phoneNumber, email, nickname, gender, req.session.idx])
 
         result.success = true
 
