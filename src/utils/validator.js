@@ -1,3 +1,6 @@
+const express  = require("express") 
+const client = require("../../database/connect/postgresql")
+
 module.exports = {
     account : function(option){
         const regId =  /^(?=.*\d)(?=.*[a-z])[0-9a-z]{8,12}$/
@@ -11,6 +14,7 @@ module.exports = {
                 throw new Error("아이디를 다시 확인해주세요")
             }
         }
+    
        
         if(option.pw){
             if(!regPw.test(option.pw)){
@@ -40,7 +44,7 @@ module.exports = {
         }
     
         if(option.email){
-            if(!regEmail.test(option.email)){
+            if(!regEmail.test(option.email) || option.email.legnth > 28){
                 throw new Error("이메일을 다시 확인해주세요")
             }
         }
@@ -52,11 +56,20 @@ module.exports = {
         }
         
         if(option.gender){
-            if(option.gender != "M" && option.gender != "W"){
+            if(option.gender != "male" && option.gender != "female"){
                 throw new Error("성별을 다시 확인해주세요")
             }
         }
     
+    },
+
+    duplicatedId : async function(id){
+        const sql = 'SELECT idx FROM backend.account WHERE id =$1'
+        const account = await client.query(sql, [id])
+        console.log(account.rows)
+        if(account.rows){
+            throw new Error("이미 있는 아이디입니다.")
+        }
     },
 
     session : function (sessionIdx){
@@ -64,7 +77,7 @@ module.exports = {
             throw new Error("로그인을 해주세요.")
         }
     },
-
+    
     post :  function (option){
         if(option.title.length < 1 || option.title.length > 30){
             throw new Error("제목은 30자 이내로 작성하세요")
