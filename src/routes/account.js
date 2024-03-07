@@ -42,6 +42,9 @@ router.post("/login", async (req, res) => {
         console.log(e)
         result.message = e.message
     }finally{
+        if(client){
+            client.end() //무조건 꺼줘야함
+        }
         res.send(result)
     }
 })
@@ -62,6 +65,9 @@ router.delete("/logout", (req, res) => {
     }catch(e){
         result.message = e.message
     }finally{
+        if(client){
+            client.end() //무조건 꺼줘야함
+        }
         res.send(result)
     }
 })
@@ -77,6 +83,7 @@ router.post("/", async (req, res) => {
 
     try{
         validator.account({id:id, pw:pw, name:name, birth:birth, phoneNumber:phoneNumber, email:email, nickname:nickname, gender:gender})
+        await validator.duplicatedId(id)
 
         //db 연결
         await client.query(sql, [id, pw, name, birth, phoneNumber, email, nickname, gender])
@@ -87,6 +94,9 @@ router.post("/", async (req, res) => {
     }catch(e){
         result.message = e.message
     }finally{
+        if(client){
+            client.end() //무조건 꺼줘야함
+        }
         res.send(result)
     }
 })
@@ -111,6 +121,9 @@ router.delete("/", async (req, res) => {
         result.message = e.message
         
     }finally{
+        if(client){
+            client.end() //무조건 꺼줘야함
+        }
         res.send(result)
     }
 })
@@ -141,6 +154,9 @@ router.get("/find-id", async (req, res) =>{
     }catch(e){
         result.message = e.message
     }finally{
+        if(client){
+            client.end() //무조건 꺼줘야함
+        }
         res.send(result)
     }
 })
@@ -168,6 +184,9 @@ router.get("/find-pw", async (req, res) =>{
     }catch(e){
         result.message = e.message
     }finally{
+        if(client){
+            client.end() //무조건 꺼줘야함
+        }
         res.send(result)
     }
 })
@@ -194,6 +213,9 @@ router.get("/", async (req, res) => {
     }catch(e){
         result.message = e.message
     }finally{
+        if(client){
+            client.end() //무조건 꺼줘야함
+        }
         res.send(result)
     }
 })
@@ -212,6 +234,7 @@ router.put("/", async (req, res) => {
         validator.session(req.session.idx)
         
         validator.account({id:id, pw:pw, name:name, birth:birth, phoneNumber:phoneNumber, email:email, nickname:nickname, gender:gender})
+        validator.duplicatedId(id)
         //db 연결
         await client.query(sql, [id, pw, name, birth, phoneNumber, email, nickname, gender, req.session.idx])
 
@@ -220,6 +243,9 @@ router.put("/", async (req, res) => {
     }catch(e){
         result.message = e.message
     }finally{
+        if(client){
+            client.end() //무조건 꺼줘야함
+        }
         res.send(result)
     }
 })
