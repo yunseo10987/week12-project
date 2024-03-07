@@ -2,7 +2,7 @@
 // const router = express.Router();
 const router = require("express").Router()
 const validator = require('../utils/validator')
-const client = require("../../database/connect/postgresql")
+const pool = require("../../database/connect/postgresql")
 
 // const query = function (sql, params=[]){
 //     return new Promise((resolve, reject) => {
@@ -30,21 +30,18 @@ router.post("/login", async (req, res) => {
     try{
         validator.account({id:id, pw:pw})
 
-        const account = await client.query(sql, [id, pw])
+        const account = await pool.query(sql, [id, pw])
         if(!account.rows.length){
             throw new Error("아이디/비밀번호가 일치하지 않습니다.")
         }
         result.success = true
         result.data = account.rows
-        req.session.idx = account.idx
+        req.session.idx = account.rows[0].idx
 
     }catch(e){
         console.log(e)
         result.message = e.message
     }finally{
-        if(client){
-            client.end() //무조건 꺼줘야함
-        }
         res.send(result)
     }
 })
@@ -65,9 +62,6 @@ router.delete("/logout", (req, res) => {
     }catch(e){
         result.message = e.message
     }finally{
-        if(client){
-            client.end() //무조건 꺼줘야함
-        }
         res.send(result)
     }
 })
@@ -86,7 +80,7 @@ router.post("/", async (req, res) => {
         await validator.duplicatedId(id)
 
         //db 연결
-        await client.query(sql, [id, pw, name, birth, phoneNumber, email, nickname, gender])
+        await pool.query(sql, [id, pw, name, birth, phoneNumber, email, nickname, gender])
 
         // 결과 전송
         result.success = true
@@ -94,9 +88,6 @@ router.post("/", async (req, res) => {
     }catch(e){
         result.message = e.message
     }finally{
-        if(client){
-            client.end() //무조건 꺼줘야함
-        }
         res.send(result)
     }
 })
@@ -112,7 +103,7 @@ router.delete("/", async (req, res) => {
     try{
         validator.session(req.session.idx)
         
-        await client.query(sql, req.session.idx)
+        await pool.query(sql, [req.session.idx])
         
         result.success = true
         req.session.destroy();
@@ -121,9 +112,6 @@ router.delete("/", async (req, res) => {
         result.message = e.message
         
     }finally{
-        if(client){
-            client.end() //무조건 꺼줘야함
-        }
         res.send(result)
     }
 })
@@ -143,7 +131,7 @@ router.get("/find-id", async (req, res) =>{
         validator.account({phoneNumber: phoneNumber, email:email})
         
         //db 연동
-        const account = await client.query(sql, [email, phoneNumber])
+        const account = await pool.query(sql, [email, phoneNumber])
         if(!account.rows.length){
             throw new Error("일치하는 아이디가 없습니다.")
         }
@@ -154,9 +142,6 @@ router.get("/find-id", async (req, res) =>{
     }catch(e){
         result.message = e.message
     }finally{
-        if(client){
-            client.end() //무조건 꺼줘야함
-        }
         res.send(result)
     }
 })
@@ -173,7 +158,7 @@ router.get("/find-pw", async (req, res) =>{
     try{
         validator.account({id:id, phoneNumber:phoneNumber})
        
-        const account = await client.query(sql, [id, phoneNumber])
+        const account = await pool.query(sql, [id, phoneNumber])
         if(!account.rows.length){
             throw new Error("일치하는 비밀번호가 없습니다")
         }
@@ -184,9 +169,6 @@ router.get("/find-pw", async (req, res) =>{
     }catch(e){
         result.message = e.message
     }finally{
-        if(client){
-            client.end() //무조건 꺼줘야함
-        }
         res.send(result)
     }
 })
@@ -200,9 +182,9 @@ router.get("/", async (req, res) => {
         "data": ""
     }
     try{
+        console.log(req.session.idx)
         validator.session(req.session.idx)
-        req.session.idx = 4
-        const account = await client.query(sql, [req.session.idx])
+        const account = await pool.query(sql, [req.session.idx])
         
         if(!account.rows.length){
             throw new Error("일치하는 정보가 없습니다.")
@@ -213,9 +195,6 @@ router.get("/", async (req, res) => {
     }catch(e){
         result.message = e.message
     }finally{
-        if(client){
-            client.end() //무조건 꺼줘야함
-        }
         res.send(result)
     }
 })
@@ -234,18 +213,15 @@ router.put("/", async (req, res) => {
         validator.session(req.session.idx)
         
         validator.account({id:id, pw:pw, name:name, birth:birth, phoneNumber:phoneNumber, email:email, nickname:nickname, gender:gender})
-        validator.duplicatedId(id)
+        await validator.duplicatedId(id)
         //db 연결
-        await client.query(sql, [id, pw, name, birth, phoneNumber, email, nickname, gender, req.session.idx])
+        await pool.query(sql, [id, pw, name, birth, phoneNumber, email, nickname, gender, req.session.idx])
 
         result.success = true
 
     }catch(e){
         result.message = e.message
     }finally{
-        if(client){
-            client.end() //무조건 꺼줘야함
-        }
         res.send(result)
     }
 })
