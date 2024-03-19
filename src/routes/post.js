@@ -38,46 +38,60 @@ router.get("/all", async (req, res) => {
   }
 });
 
+// const isLogin = (req, res, next) => {
+//   if (!req.session) {
+//     return next({
+//       status: 401,
+//       message: "",
+//     });
+//   }
+
+//   next();
+// };
+
 //게시글 쓰기
-router.post("/", async (req, res) => {
-  const { title, content, category } = req.body;
-  const sql =
-    "INSERT INTO backend.post(title, content, account_idx, post_category_idx) VALUES($1, $2, $3, $4) RETURNING idx";
-  const sql2 = `SELECT A.nickname FROM backend.post P, backend.account A WHERE P.account_idx = A.idx AND P.idx = $1`;
-  const result = {
-    success: false,
-    message: "",
-  };
+router.post(
+  "/",
+  /*isLogin,*/ async (req, res) => {
+    const loginUser = req.session;
+    const { title, content, category } = req.body;
 
-  try {
-    validator.session(req.session.idx);
-    validator.post({ title: title, content: content });
+    const sql =
+      "INSERT INTO backend.post(title, content, account_idx, post_category_idx) VALUES($1, $2, $3, $4) RETURNING idx";
+    const result = {
+      success: false,
+      message: "",
+    };
 
-    const firstResult = await pool.query(sql, [
-      title,
-      content,
-      req.session.idx,
-      category,
-    ]);
-    const postIdx = firstResult.rows[0].idx;
-    console.log(postIdx);
-    const secondResult = await pool.query(sql2, [postIdx]);
-    const nickname = secondResult.rows[0].nickname;
-    console.log("되는 거임?");
-    await notification.create({
-      type: "global",
-      writer: nickname,
-      data: {
-        postIdx: postIdx,
-      },
-    });
-    result.success = true;
-  } catch (e) {
-    result.message = e.message;
-  } finally {
-    res.send(result);
+    try {
+      validator.session(req.session.idx);
+      validator.post({ title: title, content: content });
+
+      const insertPostQueryResult = await pool.query(sql, [
+        title,
+        content,
+        loginUser.idx,
+        category,
+      ]);
+      const postIdx = insertPostQueryResult.rows[0].idx;
+      console.log(postIdx);
+      const nickname = req.session.nickname;
+      console.log("되는 거임?");
+      await notification.create({
+        type: "global",
+        writer: nickname,
+        data: {
+          postIdx: postIdx,
+        },
+      });
+      result.success = true;
+    } catch (e) {
+      result.message = e.message;
+    } finally {
+      res.send(result);
+    }
   }
-});
+);
 
 //게시글 읽기
 router.get("/:postIdx", async (req, res) => {
@@ -95,18 +109,31 @@ router.get("/:postIdx", async (req, res) => {
     message: "",
   };
   try {
-    const post = await pool.query(sql, [postIdx]);
-    console.log(post);
-    if (!post.rows.length) {
-      throw new Error("해당 게시글이 없거나 삭제되었습니다");
+    const selectQueryResult = await pool.query(sql, [postIdx]);
+    const post = selectQueryResult.rows[0];
+    if (!post) {
+      return next({
+        status: 404,
+        message: "찾을 수 없습니다.",
+      });
     }
+
     result.success = true;
-  } catch (e) {
-    result.message = e.message;
-  } finally {
     res.send(result);
+  } catch (e) {
+    return next(e);
   }
 });
+
+// const wrapper = (requestHandler) => {
+//   return async (req, res, next) => {
+//     try {
+//       await requestHandler(req, res, next);
+//     } catch (err) {
+//       return next(err);
+//     }
+//   };
+// };
 
 //게시글 수정
 router.put("/:postIdx", async (req, res) => {
@@ -153,7 +180,7 @@ router.delete("/:postIdx", async (req, res) => {
 });
 
 //게시물 좋아요
-router.put("/postIdx/likes", async (req, res) => {
+router.put("/:postIdx/likes", async (req, res, next) => {
   const { postIdx } = req.params;
   const result = {
     success: false,
@@ -162,7 +189,7 @@ router.put("/postIdx/likes", async (req, res) => {
   const poolClient = await pool.connect();
   try {
     validator.session(req.session.idx);
-
+    const nickname = req.session.nickname;
     await poolClient.query("BEGIN");
     const selectPostLikeQueryResult = await poolClient.query(
       `SELECT idx FROM backend.post_likes WHERE post_idx = $1 AND account_idx = $2`,
@@ -172,41 +199,47 @@ router.put("/postIdx/likes", async (req, res) => {
 
     if (postLikeState) {
       await poolClient.query(
-        "DELETE FROM backend.post_likes WHERE post_idx = $1 AND account_idx = $2",
+        `DELETE FROM backend.post_likes WHERE post_idx = $1 AND account_idx = $2`,
         [postIdx, req.session.idx]
       );
       await poolClient.query(
-        "UPDATE backend.post SET post_likes = post_likes - 1 WHERE idx = $1",
+        `UPDATE backend.post SET post_likes = post_likes - 1 WHERE idx = $1`,
         [postIdx]
       );
+
+      result.message = "좋아요 취소";
+    } else {
+      await poolClient.query(
+        `INSERT INTO backend.post_likes(post_idx, account_idx) VALUES($1, $2)`,
+        [postIdx, req.session.idx]
+      );
+      const updatePostQueryResult = await poolClient.query(
+        `UPDATE backend.post SET post_likes = post_likes + 1 WHERE idx = $1 RETURNING account_idx`,
+        [postIdx]
+      );
+
+      const postWriter = updatePostQueryResult.rows[0].account_idx;
       await notification.create({
         type: "individual",
         writer: nickname,
         data: {
-          postIdx: postIdx,
+          postLikers: req.session.idx,
         },
+        receiver: postWriter,
+        is_read: false,
       });
-      result.message = "좋아요 취소";
-    } else {
-      await poolClient.query(
-        "INSERT INTO backend.post_likes(post_idx, account_idx) VALUES($1, $2)",
-        [postIdx, req.session.idx]
-      );
-      await poolClient.query(
-        "UPDATE backend.post SET post_likes = post_likes + 1 WHERE idx = $1",
-        [postIdx]
-      );
 
       result.message = "좋아요 추가";
     }
     await poolClient.query("COMMIT");
     result.success = true;
+
+    res.send(result);
   } catch (e) {
     await poolClient.query("ROLLBACK");
-    result.message = e.message;
+    return next(e);
   } finally {
     poolClient.release();
-    res.send(result);
   }
 });
 

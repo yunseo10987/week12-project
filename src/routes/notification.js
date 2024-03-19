@@ -8,14 +8,20 @@ router.get("/", async (req, res) => {
     message: "",
     data: "",
   };
+
   try {
-    validator.session(req.session.idx);
+    const loginUser = req.session;
+    validator.session(loginUser.idx);
     const notifications = await notification.find({
       $or: [
         { type: "global" },
-        { type: "individual", receiver: req.session.idx },
+        { type: "individual", receiver: loginUser.idx, is_read: false },
       ],
     });
+    await notification.updateMany(
+      { type: "individual", receiver: loginUser.idx },
+      { is_read: true }
+    );
     result.success = true;
     result.data = notifications;
   } catch (e) {
