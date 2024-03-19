@@ -1,7 +1,8 @@
 const express  = require("express") 
 const router = express.Router();
 const validator = require('../utils/validator')
-const client = require("../../database/connect/postgresql")
+const pool = require("../../database/connect/postgresql")
+const notification = require('../mongooseSchema/notificationsSchema')
 
 // const query = function (sql, params=[]){
 //     return new Promise((resolve, reject) => {
@@ -20,26 +21,23 @@ const client = require("../../database/connect/postgresql")
 //게시글 전체 목록
 router.get("/all", async (req, res) => {
     const sql = 
-        `SELECT post.idx, post.date, post_category.name, post.title, post.idx 
+        `SELECT P.idx, P.created_at, PC.name, P.title, P.idx 
         FROM backend.post P 
         LEFT OUTER JOIN backend.post_category PC ON P.post_category_idx = PC.idx 
-        ORDER BY post.idx DESC`
+        ORDER BY P.idx DESC`
     const result = {
         "success" : false,
         "message": ""
     }
     try{
         
-        const post = await client.query(sql)
+        const post = await pool.query(sql)
         result.data = post.rows
         result.success = true
 
     }catch(e){
         result.message = e.message
     }finally{
-        if(client){
-            client.end() 
-        }
         res.send(result)
     }
 })
@@ -47,7 +45,8 @@ router.get("/all", async (req, res) => {
 //게시글 쓰기
 router.post("/", async (req, res) => {
     const { title, content, category } = req.body
-    const sql = "INSERT INTO backend.post(title, content, account_idx, post_category_idx) VALUES($1, $2, $3, $4)"
+    const sql = "INSERT INTO backend.post(title, content, account_idx, post_category_idx) VALUES($1, $2, $3, $4) RETURNING idx"
+    const sql2 = `SELECT A.nickname FROM backend.post P, backend.account A WHERE P.account_idx = A.idx AND P.idx = $1`
     const result = {
         "success" : false,
         "message": ""
@@ -57,16 +56,24 @@ router.post("/", async (req, res) => {
         validator.session(req.session.idx)
         validator.post({title:title, content:content})
 
-        await client.query(sql, [title, content, req.session.idx, category])
-  
+        const firstResult = await pool.query(sql, [title, content, req.session.idx, category])
+        const postIdx = firstResult.rows[0].idx
+        console.log(postIdx)
+        const secondResult = await pool.query(sql2, [postIdx])
+        const nickname = secondResult.rows[0].nickname
+        console.log("되는 거임?")
+        await notification.create({
+            "type": "global",
+            "writer": nickname,
+            "data": {
+                "postIdx": postIdx
+            }
+        })
         result.success = true
 
     }catch(e){
         result.message = e.message
     }finally{
-        if(client){
-            client.end()
-        }
         res.send(result)
     }
 })
@@ -87,7 +94,7 @@ router.get('/:postIdx', async (req, res) => {
         "message": ""
     }
     try{
-        const post = await client.query(sql, [postIdx])
+        const post = await pool.query(sql, [postIdx])
         console.log(post)
         if(!post.rows.length){
             throw new Error("해당 게시글이 없거나 삭제되었습니다")
@@ -97,9 +104,6 @@ router.get('/:postIdx', async (req, res) => {
     }catch(e){
         result.message = e.message
     }finally{
-        if(client){
-            client.end() 
-        }
         res.send(result)
     }
 })
@@ -117,16 +121,13 @@ router.put("/:postIdx", async (req, res) => {
         validator.session(req.session.idx)
         validator.post({title:title, content:content})
 
-        await client.query(sql, [title, content, category, postIdx, req.session.idx])
+        await pool.query(sql, [title, content, category, postIdx, req.session.idx])
 
         result.success = true
 
     }catch(e){
         result.message = e.message
     }finally{
-        if(client){
-            client.end() 
-        }
         res.send(result)
     }
 })
@@ -142,15 +143,12 @@ router.delete("/:postIdx", async (req, res) => {
     try{
         validator.session(req.session.idx)
 
-        await client.query(sql, [postIdx, req.session.idx])
+        await pool.query(sql, [postIdx, req.session.idx])
         result.success = true 
 
     }catch(e){
         result.message = e.message
     }finally{
-        if(client){
-            client.end() 
-        }
         res.send(result)
     }
 })
@@ -162,32 +160,31 @@ router.put("/postIdx/likes", async (req, res) => {
         "success" : false,
         "message": ""
     }
-
+    const poolClient = pool.connect()
     try{
         validator.session(req.session.idx)
 
-        await client.query('BEGIN')
-        const isLikers = await client.query('SELECT idx FROM backend.post_likes WHERE post_idx = $1 AND account_idx = $2', [postIdx,req.session.idx])
+        await poolClient.query('BEGIN')
+        const isLikers = await poolClient.query('SELECT idx FROM backend.post_likes WHERE post_idx = $1 AND account_idx = $2', [postIdx,req.session.idx])
         if(isLikers.rows){
-            await client.query('DELETE FROM backend.post_likes WHERE post_idx = $1 AND account_idx = $2', [postIdx, req.session.idx])
-            await client.query('UPDATE backend.post SET post_likes = post_likes - 1 WHERE idx = $1 AND account_idx = $2')
+            await poolClient.query('DELETE FROM backend.post_likes WHERE post_idx = $1 AND account_idx = $2', [postIdx, req.session.idx])
+            await poolClient.query('UPDATE backend.post SET post_likes = post_likes - 1 WHERE idx = $1 AND account_idx = $2')
 
             result.message = "좋아요 취소"
         }else{
-            await client.query('INSERT INTO backend.post_likes(post_idx, account_idx) VALUES($1, $2)', [postIdx, req.session.idx])
-            await client.query('UPDATE backend.post SET post_likes = post_likes + 1 WHERE idx = $1 AND account_idx = $2')
+            await poolClient.query('INSERT INTO backend.post_likes(post_idx, account_idx) VALUES($1, $2)', [postIdx, req.session.idx])
+            await poolClient.query('UPDATE backend.post SET post_likes = post_likes + 1 WHERE idx = $1 AND account_idx = $2')
+            
             
             result.message = "좋아요 추가"
         }
-        await client.query('COMMIT')
+        await poolClient.query('COMMIT')
         result.success = true
     }catch(e){
-        await client.query('ROLLBACK')
+        await poolClient.query('ROLLBACK')
         result.message = e.message
     }finally{
-        if(client){
-            client.end() 
-        }
+        (await poolClient).release()
         res.send(result)
     }
 } )
