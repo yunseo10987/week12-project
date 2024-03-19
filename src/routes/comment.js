@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const validator = require("../utils/validator");
 const pool = require("../../database/connect/postgresql");
+const notification = require("../mongooseSchema/notificationsSchema");
 
 // const query = function (sql, params=[]){
 //     return new Promise((resolve, reject) => {
@@ -26,10 +27,25 @@ router.post("/", async (req, res) => {
     message: "",
   };
   try {
-    validator.session(req.session.idx);
+    const loginUser = req.session;
+    validator.session(loginUser.idx);
     validator.comment(content);
 
-    await pool.query(sql, [content, postIdx, req.session.idx]);
+    await pool.query(sql, [content, postIdx, loginUser.idx]);
+    const selectPostQueryResult = await pool.query(
+      "SELECT account_idx FROM backend.post WHERE idx = $1",
+      [postIdx]
+    );
+    const postWriter = selectPostQueryResult.rows[0].account_idx;
+    await notification.create({
+      type: "individual",
+      writer: loginUser.nickname,
+      data: {
+        postIdx: postIdx,
+      },
+      receiver: postWriter,
+      is_read: false,
+    });
     result.success = true;
   } catch (e) {
     result.message = e.message;
@@ -118,26 +134,26 @@ router.put("/commentIdx/likes", async (req, res) => {
 
     await poolClient.query("BEGIN");
     const isLikers = await poolClient.query(
-      "SELECT idx FROM backend.comment_likes WHERE comment_idx = $1 AND account_idx = $2",
+      `SELECT idx FROM backend.comment_likes WHERE comment_idx = $1 AND account_idx = $2`,
       [commentIdx, req.session.idx]
     );
     if (isLikers.rows) {
       await poolClient.query(
-        "DELETE FROM backend.comment_likes WHERE comment_idx = $1 AND account_idx = $2",
+        `DELETE FROM backend.comment_likes WHERE comment_idx = $1 AND account_idx = $2`,
         [commentIdx, req.session.idx]
       );
       await poolClient.query(
-        "UPDATE backend.comment SET comment_likes = comment_likes - 1 WHERE idx = $1 AND account_idx = $2"
+        `UPDATE backend.comment SET comment_likes = comment_likes - 1 WHERE idx = $1 AND account_idx = $2`
       );
 
       result.message = "좋아요 취소";
     } else {
       await poolClient.query(
-        "INSERT INTO backend.comment_likes(comment_idx, account_idx) VALUES($1, $2)",
+        `INSERT INTO backend.comment_likes(comment_idx, account_idx) VALUES($1, $2)`,
         [commentIdx, req.session.idx]
       );
       await poolClient.query(
-        "UPDATE backend.comment SET comment_likes = comment_likes + 1 WHERE idx = $1 AND account_idx = $2"
+        `UPDATE backend.comment SET comment_likes = comment_likes + 1 WHERE idx = $1 AND account_idx = $2`
       );
 
       result.message = "좋아요 추가";
