@@ -44,4 +44,29 @@ router.get("/", async (req, res) =>{
     }
 })
 
+// // API (파일을 반환하는 API)
+// app.get("/mainpage", (req, res) => {
+//     //req는 요청 값 , res는 응답 값
+//     //절대 경로로 작성
+//     res.sendFile(`${__dirname}/main.html`)
+// })
+
+
+// //API (값을 반환하는 API)
+// app.post("/login", (req, res) => {
+
+//     // 통신에서는 Object로 전달
+//     const {id, pw} = req.body
+//     const result = {
+//         "success": false
+//     }
+
+//     //데이터베이스 통신
+    // if(id === "stageus" && pw === "1234"){
+    //     result.success = true
+    // }
+
+//     //값 반환
+//     res.send(result)
+// })
 module.exports = router;
