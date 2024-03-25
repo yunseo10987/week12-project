@@ -5,7 +5,7 @@ const regNum = /^\d{3}-\d{3,4}-\d{4}$/;
 const regEmail = /^[a-z0-9]+@[a-z]+\.[a-z]{2,3}$/;
 const regBirth = /^\d{4}-\d{2}-\d{2}$/;
 
-const checkAccountRegex = (req, res, next) => {
+const validateSignUp = (req, res, next) => {
   const { id, pw, name, birth, phoneNumber, email, nickname, gender } =
     req.body;
   const result = {
@@ -74,4 +74,4 @@ const checkAccountRegex = (req, res, next) => {
   }
 };
 
-module.exports = checkAccountRegex;
+module.exports = validateSignUp;
