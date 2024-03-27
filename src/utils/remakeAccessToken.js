@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
+const router = require("../routes/account");
 
-const remakeAccessToken = (token) => {
+router.post("/", async (req, res) => {
   const result = {
     success: false,
     message: "",
@@ -18,13 +19,13 @@ const remakeAccessToken = (token) => {
         expiresIn: "1h",
       }
     );
+    res.cookie("access_token", accessToken);
     result.success = true;
-    result.data.accessToken = accessToken;
   } catch (e) {
     result.message = e.message;
   } finally {
     res.send(result);
   }
-};
+});
 
-module.exports = remakeAccessToken;
+module.exports = router;
