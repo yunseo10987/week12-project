@@ -1,21 +1,10 @@
 const express = require("express");
 const router = express.Router();
-const validator = require("../utils/validator");
 const pool = require("../../database/connect/postgresql");
 const notification = require("../mongooseSchema/notificationsSchema");
-
-// const query = function (sql, params=[]){
-//     return new Promise((resolve, reject) => {
-//         mariadb.query(sql, params, (err, rows) => {
-//             if(err){
-//                 reject(err)
-//             }else{
-//                 resolve(rows)
-//             }
-
-//         })
-//     })
-// }
+const checkLogin = require("../middlewares/checkLogin");
+const validatePost = require("../middlewares/validatePost");
+const jwt = require("jsonwebtoken");
 
 //게시글 전체 목록
 router.get("/all", async (req, res) => {
@@ -38,60 +27,43 @@ router.get("/all", async (req, res) => {
   }
 });
 
-// const isLogin = (req, res, next) => {
-//   if (!req.session) {
-//     return next({
-//       status: 401,
-//       message: "",
-//     });
-//   }
-
-//   next();
-// };
-
 //게시글 쓰기
-router.post(
-  "/",
-  /*isLogin,*/ async (req, res) => {
-    const loginUser = req.session;
-    const { title, content, category } = req.body;
+router.post("/", checkLogin, validatePost, async (req, res) => {
+  const { title, content, category } = req.body;
+  const sql =
+    "INSERT INTO backend.post(title, content, account_idx, post_category_idx) VALUES($1, $2, $3, $4) RETURNING idx";
+  const result = {
+    success: false,
+    message: "",
+  };
 
-    const sql =
-      "INSERT INTO backend.post(title, content, account_idx, post_category_idx) VALUES($1, $2, $3, $4) RETURNING idx";
-    const result = {
-      success: false,
-      message: "",
-    };
+  try {
+    const loginUser = jwt.decode(req.cookies.access_token);
 
-    try {
-      validator.session(req.session.idx);
-      validator.post({ title: title, content: content });
+    const insertPostQueryResult = await pool.query(sql, [
+      title,
+      content,
+      loginUser.idx,
+      category,
+    ]);
+    const postIdx = insertPostQueryResult.rows[0].idx;
+    const nickname = loginUser.nickname;
 
-      const insertPostQueryResult = await pool.query(sql, [
-        title,
-        content,
-        loginUser.idx,
-        category,
-      ]);
-      const postIdx = insertPostQueryResult.rows[0].idx;
-      console.log(postIdx);
-      const nickname = req.session.nickname;
-      console.log("되는 거임?");
-      await notification.create({
-        type: "global",
-        writer: nickname,
-        data: {
-          postIdx: postIdx,
-        },
-      });
-      result.success = true;
-    } catch (e) {
-      result.message = e.message;
-    } finally {
-      res.send(result);
-    }
+    await notification.create({
+      type: "global",
+      writer: nickname,
+      data: {
+        postIdx: postIdx,
+      },
+    });
+
+    result.success = true;
+  } catch (e) {
+    result.message = e.message;
+  } finally {
+    res.send(result);
   }
-);
+});
 
 //게시글 읽기
 router.get("/:postIdx", async (req, res) => {
@@ -136,8 +108,8 @@ router.get("/:postIdx", async (req, res) => {
 // };
 
 //게시글 수정
-router.put("/:postIdx", async (req, res) => {
-  const { postIdx } = req.params;
+router.put("/", checkLogin, validatePost, async (req, res) => {
+  const { postIdx } = req.body;
   const sql =
     "UPDATE backend.post SET title=$1, content=$2,post_category_idx=$3 WHERE idx = $4 AND account_idx = $5";
   const { title, content, category } = req.body;
@@ -146,10 +118,9 @@ router.put("/:postIdx", async (req, res) => {
     message: "",
   };
   try {
-    validator.session(req.session.idx);
-    validator.post({ title: title, content: content });
+    const loginUser = jwt.decode(req.cookies.access_token);
 
-    await pool.query(sql, [title, content, category, postIdx, req.session.idx]);
+    await pool.query(sql, [title, content, category, postIdx, loginUser.idx]);
 
     result.success = true;
   } catch (e) {
@@ -160,17 +131,19 @@ router.put("/:postIdx", async (req, res) => {
 });
 
 //게시글 삭제
-router.delete("/:postIdx", async (req, res) => {
-  const { postIdx } = req.params;
+router.delete("/", checkLogin, async (req, res) => {
+  const { postIdx } = req.body;
   const sql = "DELETE FROM backend.post WHERE idx = $1 AND account_idx = $2";
   const result = {
     success: false,
     message: "",
   };
-  try {
-    validator.session(req.session.idx);
 
-    await pool.query(sql, [postIdx, req.session.idx]);
+  try {
+    const loginUser = jwt.decode(req.cookies.access_token);
+
+    await pool.query(sql, [postIdx, loginUser.idx]);
+
     result.success = true;
   } catch (e) {
     result.message = e.message;
@@ -180,27 +153,29 @@ router.delete("/:postIdx", async (req, res) => {
 });
 
 //게시물 좋아요
-router.put("/:postIdx/likes", async (req, res, next) => {
-  const { postIdx } = req.params;
+router.put("/likes", checkLogin, async (req, res, next) => {
+  const { postIdx } = req.body;
   const result = {
     success: false,
     message: "",
   };
   const poolClient = await pool.connect();
+
   try {
-    validator.session(req.session.idx);
-    const nickname = req.session.nickname;
+    const loginUser = jwt.decode(req.cookies.access_token);
+    const nickname = loginUser.nickname;
+
     await poolClient.query("BEGIN");
     const selectPostLikeQueryResult = await poolClient.query(
       `SELECT idx FROM backend.post_likes WHERE post_idx = $1 AND account_idx = $2`,
-      [postIdx, req.session.idx]
+      [postIdx, loginUser.idx]
     );
     const postLikeState = selectPostLikeQueryResult.rows[0];
 
     if (postLikeState) {
       await poolClient.query(
         `DELETE FROM backend.post_likes WHERE post_idx = $1 AND account_idx = $2`,
-        [postIdx, req.session.idx]
+        [postIdx, loginUser.idx]
       );
       await poolClient.query(
         `UPDATE backend.post SET post_likes = post_likes - 1 WHERE idx = $1`,
@@ -211,7 +186,7 @@ router.put("/:postIdx/likes", async (req, res, next) => {
     } else {
       await poolClient.query(
         `INSERT INTO backend.post_likes(post_idx, account_idx) VALUES($1, $2)`,
-        [postIdx, req.session.idx]
+        [postIdx, loginUser.idx]
       );
       const updatePostQueryResult = await poolClient.query(
         `UPDATE backend.post SET post_likes = post_likes + 1 WHERE idx = $1 RETURNING account_idx`,
@@ -219,16 +194,17 @@ router.put("/:postIdx/likes", async (req, res, next) => {
       );
 
       const postWriter = updatePostQueryResult.rows[0].account_idx;
-      await notification.create({
-        type: "individual",
-        writer: nickname,
-        data: {
-          postLikers: req.session.idx,
-        },
-        receiver: postWriter,
-        is_read: false,
-      });
-
+      if (postWriter !== loginUser.idx) {
+        await notification.create({
+          type: "individual",
+          writer: nickname,
+          data: {
+            postLikers: loginUser.idx,
+          },
+          receiver: postWriter,
+          is_read: false,
+        });
+      }
       result.message = "좋아요 추가";
     }
     await poolClient.query("COMMIT");

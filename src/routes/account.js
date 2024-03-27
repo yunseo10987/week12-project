@@ -1,42 +1,44 @@
-// const express  = require("express")
-// const router = express.Router();
 const router = require("express").Router();
-const validator = require("../utils/validator");
 const pool = require("../../database/connect/postgresql");
-
-// const query = function (sql, params=[]){
-//     return new Promise((resolve, reject) => {
-//         mariadb.query(sql, params, (err, rows) => {
-//             if(err){
-//                 reject(err)
-//             }else{
-//                 resolve(rows)
-//             }
-//         })
-//     })
-// }
+const checkDuplicatedId = require("../middlewares/checkDuplicatedId");
+const validateSignUp = require("../middlewares/validateSignUp");
+const validateFindId = require("../middlewares/validateFindId");
+const validateFindPw = require("../middlewares/validateFindPw");
+const validateLogin = require("../middlewares/validateLogin");
+const makeAccessToken = require("../utils/makeAccessToken");
+const makeRefreshToken = require("../utils/makeRefreshToken");
+const checkLogin = require("../middlewares/checkLogin");
+const jwt = require("jsonwebtoken");
 
 //로그인
-router.post("/login", async (req, res) => {
+router.post("/login", validateLogin, async (req, res) => {
   const { id, pw } = req.body;
   const sql =
     "SELECT idx, nickname FROM backend.account WHERE id = $1 AND password = $2";
   const result = {
     success: false,
     message: "",
-    data: "",
+    data: {},
   };
 
   try {
-    validator.account({ id: id, pw: pw });
-
+    //DB에서 아이디 비밀번호 확인
     const account = await pool.query(sql, [id, pw]);
     if (!account.rows.length) {
       throw new Error("아이디/비밀번호가 일치하지 않습니다.");
     }
+    //성공 시 토큰 발행
+    const accessToken = makeAccessToken({
+      idx: account.rows[0].idx,
+      nickname: account.rows[0].nickname,
+    });
+    const refreshToken = makeRefreshToken({
+      idx: account.rows[0].idx,
+      nickname: account.rows[0].nickname,
+    });
+    res.cookie("access_token", accessToken);
+    res.cookie("refresh_token", refreshToken);
     result.success = true;
-    result.data = account.rows;
-    req.session.idx = account.rows[0].idx;
   } catch (e) {
     console.log(e);
     result.message = e.message;
@@ -46,16 +48,14 @@ router.post("/login", async (req, res) => {
 });
 
 //로그아웃
-router.delete("/logout", (req, res) => {
+router.delete("/logout", checkLogin, (req, res) => {
   const result = {
     success: false,
     message: "",
   };
 
   try {
-    validator.validator(req.session.idx, null, "로그인 후 이용하세요");
-
-    req.session.destroy();
+    res.clearCookie("access_token");
     result.success = true;
   } catch (e) {
     result.message = e.message;
@@ -65,7 +65,7 @@ router.delete("/logout", (req, res) => {
 });
 
 //회원 가입
-router.post("/", async (req, res) => {
+router.post("/", validateSignUp, checkDuplicatedId, async (req, res) => {
   const { id, pw, name, birth, phoneNumber, email, nickname, gender } =
     req.body;
   const sql =
@@ -76,18 +76,6 @@ router.post("/", async (req, res) => {
   };
 
   try {
-    validator.account({
-      id: id,
-      pw: pw,
-      name: name,
-      birth: birth,
-      phoneNumber: phoneNumber,
-      email: email,
-      nickname: nickname,
-      gender: gender,
-    });
-    await validator.duplicatedId(id);
-
     //db 연결
     await pool.query(sql, [
       id,
@@ -110,19 +98,18 @@ router.post("/", async (req, res) => {
 });
 
 //회원 탈퇴
-router.delete("/", async (req, res) => {
+router.delete("/", checkLogin, async (req, res) => {
   const sql = "DELETE FROM backend.account WHERE idx = $1";
   const result = {
     success: false,
   };
 
   try {
-    validator.session(req.session.idx);
+    const loginUser = jwt.decode(req.cookies.access_token);
 
-    await pool.query(sql, [req.session.idx]);
-
+    await pool.query(sql, [loginUser.idx]);
+    res.clearCookie("access_token");
     result.success = true;
-    req.session.destroy();
   } catch (e) {
     result.message = e.message;
   } finally {
@@ -131,7 +118,7 @@ router.delete("/", async (req, res) => {
 });
 
 //아이디 찾기
-router.get("/find-id", async (req, res) => {
+router.get("/find-id", validateFindId, async (req, res) => {
   const { phoneNumber, email } = req.query;
   const sql =
     "SELECT id FROM backend.account WHERE email =$1 AND phonenumber =$2";
@@ -142,8 +129,6 @@ router.get("/find-id", async (req, res) => {
   };
 
   try {
-    validator.account({ phoneNumber: phoneNumber, email: email });
-
     //db 연동
     const account = await pool.query(sql, [email, phoneNumber]);
     if (!account.rows.length) {
@@ -160,7 +145,7 @@ router.get("/find-id", async (req, res) => {
 });
 
 //비밀번호 찾기
-router.get("/find-pw", async (req, res) => {
+router.get("/find-pw", validateFindPw, async (req, res) => {
   const { id, phoneNumber } = req.query;
   const sql =
     "SELECT password FROM backend.account WHERE id =$1 AND phonenumber =$2";
@@ -170,8 +155,6 @@ router.get("/find-pw", async (req, res) => {
     data: "",
   };
   try {
-    validator.account({ id: id, phoneNumber: phoneNumber });
-
     const account = await pool.query(sql, [id, phoneNumber]);
     if (!account.rows.length) {
       throw new Error("일치하는 비밀번호가 없습니다");
@@ -187,7 +170,7 @@ router.get("/find-pw", async (req, res) => {
 });
 
 //내 정보 보기
-router.get("/", async (req, res) => {
+router.get("/", checkLogin, async (req, res) => {
   const sql =
     "SELECT id, password, name, birth, phonenumber, email, nickname, gender FROM backend.account WHERE idx = $1";
   const result = {
@@ -195,10 +178,10 @@ router.get("/", async (req, res) => {
     message: "",
     data: "",
   };
+
   try {
-    console.log(req.session.idx);
-    validator.session(req.session.idx);
-    const account = await pool.query(sql, [req.session.idx]);
+    const loginUser = jwt.decode(req.cookies.access_token);
+    const account = await pool.query(sql, [loginUser.idx]);
 
     if (!account.rows.length) {
       throw new Error("일치하는 정보가 없습니다.");
@@ -213,50 +196,45 @@ router.get("/", async (req, res) => {
 });
 
 //내 정보 수정
-router.put("/", async (req, res) => {
-  const { id, pw, name, birth, phoneNumber, email, nickname, gender } =
-    req.body;
-  const sql =
-    "UPDATE backend.account SET id =$1, password=$2, name=$3, birth=$4, phonenumber=$5, email=$6, nickname=$7, gender=$8 WHERE idx =$9";
-  const result = {
-    success: false,
-    message: "",
-  };
+router.put(
+  "/",
+  checkLogin,
+  validateSignUp,
+  checkDuplicatedId,
+  async (req, res) => {
+    const { id, pw, name, birth, phoneNumber, email, nickname, gender } =
+      req.body;
+    const sql =
+      "UPDATE backend.account SET id =$1, password=$2, name=$3, birth=$4, phonenumber=$5, email=$6, nickname=$7, gender=$8 WHERE idx =$9";
+    const result = {
+      success: false,
+      message: "",
+    };
 
-  try {
-    validator.session(req.session.idx);
+    try {
+      const loginUser = jwt.decode(req.cookies.access_token);
 
-    validator.account({
-      id: id,
-      pw: pw,
-      name: name,
-      birth: birth,
-      phoneNumber: phoneNumber,
-      email: email,
-      nickname: nickname,
-      gender: gender,
-    });
-    await validator.duplicatedId(id);
-    //db 연결
-    await pool.query(sql, [
-      id,
-      pw,
-      name,
-      birth,
-      phoneNumber,
-      email,
-      nickname,
-      gender,
-      req.session.idx,
-    ]);
+      //db 연결
+      await pool.query(sql, [
+        id,
+        pw,
+        name,
+        birth,
+        phoneNumber,
+        email,
+        nickname,
+        gender,
+        loginUser.idx,
+      ]);
 
-    result.success = true;
-  } catch (e) {
-    result.message = e.message;
-  } finally {
-    res.send(result);
+      result.success = true;
+    } catch (e) {
+      result.message = e.message;
+    } finally {
+      res.send(result);
+    }
   }
-});
+);
 
 //export 작업
 module.exports = router;

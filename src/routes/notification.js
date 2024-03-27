@@ -1,8 +1,8 @@
 const router = require("express").Router();
-const validator = require("../utils/validator");
 const notification = require("../mongooseSchema/notificationsSchema");
+const checkLogin = require("../middlewares/checkLogin");
 
-router.get("/", async (req, res) => {
+router.get("/", checkLogin, async (req, res) => {
   const result = {
     success: false,
     message: "",
@@ -10,11 +10,10 @@ router.get("/", async (req, res) => {
   };
 
   try {
-    const loginUser = req.session;
-    validator.session(loginUser.idx);
+    const loginUser = jwt.decode(req.cookies.access_token);
     const notifications = await notification.find({
       $or: [
-        { type: "global" },
+        { type: "global", writer: { $ne: loginUser.nickname } },
         { type: "individual", receiver: loginUser.idx, is_read: false },
       ],
     });
