@@ -2,12 +2,8 @@ const regId = /^(?=.*\d)(?=.*[a-z])[0-9a-z]{8,12}$/;
 const regNum = /^\d{3}-\d{3,4}-\d{4}$/;
 
 const validateFindPw = (req, res, next) => {
-  const { id, pw, name, birth, phoneNumber, email, nickname, gender } =
-    req.body;
-  const result = {
-    success: false,
-    message: "",
-  };
+  const { id, phoneNumber } = req.body;
+
   try {
     if (id === null || id === undefined || id === "") {
       throw new Error("아이디를 입력하세요");
@@ -30,8 +26,8 @@ const validateFindPw = (req, res, next) => {
 
     next();
   } catch (e) {
-    result.message = e.message;
-    res.send(result);
+    e.api = "middlewares";
+    next(e);
   }
 };
 

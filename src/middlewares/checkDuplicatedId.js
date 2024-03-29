@@ -2,10 +2,6 @@ const client = require("../../database/connect/postgresql");
 
 const checkDuplicatedId = async (req, res, next) => {
   const { id } = req.body;
-  const result = {
-    success: false,
-    message: "",
-  };
   try {
     const account = await client.query(
       `SELECT id FROM backend.account WHERE id =$1`,
@@ -17,8 +13,8 @@ const checkDuplicatedId = async (req, res, next) => {
     }
     next();
   } catch (e) {
-    result.message = e.message;
-    res.send(result);
+    e.api = "middlewares";
+    next(e);
   }
 };
 

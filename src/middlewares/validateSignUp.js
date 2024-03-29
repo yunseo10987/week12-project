@@ -8,10 +8,6 @@ const regBirth = /^\d{4}-\d{2}-\d{2}$/;
 const validateSignUp = (req, res, next) => {
   const { id, pw, name, birth, phoneNumber, email, nickname, gender } =
     req.body;
-  const result = {
-    success: false,
-    message: "",
-  };
   try {
     if (id === null || id === undefined || id === "") {
       throw new Error("아이디를 입력하세요");
@@ -69,8 +65,8 @@ const validateSignUp = (req, res, next) => {
 
     next();
   } catch (e) {
-    result.message = e.message;
-    res.send(result);
+    e.api = "middlewares";
+    next(e);
   }
 };
 

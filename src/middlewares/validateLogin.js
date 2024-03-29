@@ -3,12 +3,8 @@ const regPw =
   /^(?=.*[a-zA-z])(?=.*[0-9])(?=.*[$`~!@$!%*#^?&\\(\\)\-_=+]).{8,16}$/;
 
 const validateLogin = (req, res, next) => {
-  const { id, pw, name, birth, phoneNumber, email, nickname, gender } =
-    req.body;
-  const result = {
-    success: false,
-    message: "",
-  };
+  const { id, pw } = req.body;
+
   try {
     if (id === null || id === undefined || id === "") {
       throw new Error("아이디를 입력하세요");
@@ -26,8 +22,8 @@ const validateLogin = (req, res, next) => {
 
     next();
   } catch (e) {
-    result.message = e.message;
-    res.send(result);
+    e.api = "middlewares";
+    next(e);
   }
 };
 

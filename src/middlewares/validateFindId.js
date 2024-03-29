@@ -3,10 +3,6 @@ const regEmail = /^[a-z0-9]+@[a-z]+\.[a-z]{2,3}$/;
 
 const validateFindId = (req, res, next) => {
   const { phoneNumber, email } = req.body;
-  const result = {
-    success: false,
-    message: "",
-  };
   try {
     if (
       phoneNumber === null ||
@@ -28,8 +24,8 @@ const validateFindId = (req, res, next) => {
 
     next();
   } catch (e) {
-    result.message = e.message;
-    res.send(result);
+    e.api = "middlewares";
+    next(e);
   }
 };
 
