@@ -1,33 +1,47 @@
 const router = require("express").Router();
 const notification = require("../mongooseSchema/notificationsSchema");
 const checkLogin = require("../middlewares/checkLogin");
+const jwt = require("jsonwebtoken");
+const loggingModel = require("../mongooseSchema/loggingSchema");
+const requestIp = require("request-ip");
 
-router.get("/", checkLogin, async (req, res) => {
+router.get("/", checkLogin, async (req, res, next) => {
   const result = {
     success: false,
-    message: "",
-    data: "",
+    data: {},
   };
 
   try {
-    const loginUser = jwt.decode(req.cookies.access_token);
-    const notifications = await notification.find({
-      $or: [
-        { type: "global", writer: { $ne: loginUser.nickname } },
-        { type: "individual", receiver: loginUser.idx, is_read: false },
-      ],
-    });
+    const loginUser = req.loginUser;
+    const notifications = await notification
+      .find({
+        $or: [
+          { type: "global", "data.writer": { $ne: loginUser.nickname } },
+          { type: "individual", receiver: loginUser.idx, is_read: false },
+        ],
+      })
+      .sort({ createdAt: "desc" });
     await notification.updateMany(
       { type: "individual", receiver: loginUser.idx },
       { is_read: true }
     );
+
+    await loggingModel.create({
+      type: "GET/ notification",
+      client: loginUser.idx,
+      client_ip: requestIp.getClientIp(req),
+      request: req.body,
+      response: {
+        success: true,
+        data: notifications,
+      },
+    });
     result.success = true;
     result.data = notifications;
-  } catch (e) {
-    console.log(e.message);
-    result.message = e.message;
-  } finally {
     res.send(result);
+  } catch (e) {
+    e.api = "GET/ notification";
+    return next(e);
   }
 });
 

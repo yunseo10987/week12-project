@@ -5,13 +5,13 @@ const loggingModel = require("../mongooseSchema/loggingSchema");
 const requestIp = require("request-ip");
 const checkAdmin = require("../middlewares/checkAdmin");
 
-router.get("/", checkLogin, checkAdmin, async (req, res, next) => {
+router.get("/", checkLogin, async (req, res, next) => {
   const result = {
     success: false,
     data: {},
   };
   try {
-    const loginUser = jwt.decode(req.cookies.access_token);
+    const loginUser = req.loginUser;
     const loggingData = await loggingModel.find();
 
     await loggingModel.create({
