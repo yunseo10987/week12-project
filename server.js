@@ -2,7 +2,9 @@ const express = require("express"); //express파일을 import
 const { buffer } = require("stream/consumers");
 const pool = require("./database/connect/postgresql");
 const mongoose = require("mongoose");
-
+const cookieParser = require("cookie-parser");
+const requestIp = require("request-ip");
+const loggingModel = require("./src/mongooseSchema/loggingSchema.js");
 const fs = require("fs"); //외부 파일을 가져옴
 const https = require("https");
 
@@ -17,7 +19,7 @@ const options = {
   //"ca":        //ssl을 돈 주고 구입하면 ca 파일을 줌(인증된 회사 파일)
 };
 //const cors = require("cors")
-
+require("dotenv").config();
 //mariadb.connect()
 // const mongoPool = async function(){
 //     await mongoDb.connect('mongodb://localhost:27017/backend')
@@ -28,6 +30,7 @@ const options = {
 // }catch(e){
 //     console.log(e.message)
 //}
+app.use(cookieParser());
 mongoose
   .connect("mongodb://localhost:27017/backend")
   .then(() => {
@@ -68,9 +71,15 @@ const accountApi = require("./src/routes/account"); // 외부 js 파일 import
 const postApi = require("./src/routes/post");
 const commentApi = require("./src/routes/comment");
 const notificationApi = require("./src/routes/notification");
-const chatApi = require("./src/routes/chat");
+const replyCommentApi = require("./src/routes/replyComment.js");
+const refreshTokenApi = require("./src/utils/remakeAccessToken.js");
+const loggingApi = require("./src/routes/logging.js");
+const clickerApi = require("./src/routes/clicker.js");
+const cartApi = require("./src/routes/cart");
 
-//const testApi = require('./강의용.js')
+// const chatApi = require("./src/routes/chat");
+
+// const testApi = require("./강의용.js");
 
 //Redirect 설정(http로 접속을 했다면, https 웹 서버로 흐름을 바꿔주는 기능)
 // app.get("*",(req, res, next) =>{
@@ -84,19 +93,56 @@ const chatApi = require("./src/routes/chat");
 //     next()
 // })
 
+app.use((req, res, next) => {
+  res.on("finish", async () => {
+    try {
+      await loggingModel.create({
+        method: req.method,
+        path: req.originalUrl,
+        client: req.loginUser,
+        client_ip: requestIp.getClientIp(req),
+        request: req.body,
+        response: res.result,
+      });
+    } catch (e) {
+      console.log(e.message);
+    }
+  });
+  next();
+});
+
 // app.use("/", )
 app.use("/account", accountApi);
 app.use("/post", postApi);
 app.use("/comment", commentApi);
 app.use("/notification", notificationApi);
-app.use("/chat", chatApi);
-//app.use("/test", testApi)
+app.use("/reply-comment", replyCommentApi);
+app.use("/logging", loggingApi);
+// app.use("/chat", chatApi);
+// app.use("/test", testApi);
+app.use("/refresh-token", refreshTokenApi);
+app.use("/clicker", clickerApi);
+app.use("/cart", cartApi);
 
-app.get("/", (req, res) => {
-  res.send(`Hello World!`);
+app.use((req, res, next) => {
+  const error = new Error("api not found");
+  error.status = 404;
+  throw error;
 });
 
 //Web Server 실행 코드
+
+app.use(async (err, req, res, next) => {
+  // if (!err.status) {
+  //   // 진짜 에러
+  // } --> 다음에 물어볼 거
+  // 예외
+  res.result = {
+    success: false,
+    message: err.message,
+  };
+  res.status(err.status || 500).send(res.result);
+});
 
 //혹시 모를 옛날 방식인 http 방식으로 들어오는 방식 때문에 8000포트 서버를 열어둠
 app.listen(port, () => {
