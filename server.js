@@ -7,6 +7,8 @@ const requestIp = require("request-ip");
 const loggingModel = require("./src/mongooseSchema/loggingSchema.js");
 const fs = require("fs"); //외부 파일을 가져옴
 const https = require("https");
+const schedule = require("node-schedule");
+const redis = require("redis").createClient();
 
 const sslPort = 8443;
 const app = express();
@@ -73,6 +75,7 @@ const commentApi = require("./src/routes/comment");
 const notificationApi = require("./src/routes/notification");
 const replyCommentApi = require("./src/routes/replyComment.js");
 const refreshTokenApi = require("./src/utils/remakeAccessToken.js");
+const visitorApi = require("./src/routes/visitor.js");
 const loggingApi = require("./src/routes/logging.js");
 const clickerApi = require("./src/routes/clicker.js");
 const cartApi = require("./src/routes/cart");
@@ -118,6 +121,7 @@ app.use("/comment", commentApi);
 app.use("/notification", notificationApi);
 app.use("/reply-comment", replyCommentApi);
 app.use("/logging", loggingApi);
+app.use("/visitor", visitorApi);
 // app.use("/chat", chatApi);
 // app.use("/test", testApi);
 app.use("/refresh-token", refreshTokenApi);
@@ -147,6 +151,17 @@ app.use(async (err, req, res, next) => {
 //혹시 모를 옛날 방식인 http 방식으로 들어오는 방식 때문에 8000포트 서버를 열어둠
 app.listen(port, () => {
   console.log(`${port}번에서 HTTP Web Server 실행`);
+  schedule.scheduleJob("0 0 0 * *", async () => {
+    try {
+      await redis.connect();
+      redis.sendCommand("SAVE");
+      await redis.del("today_visitor");
+    } catch (e) {
+      return next(e);
+    } finally {
+      redis.disconnect();
+    }
+  });
 });
 
 //https 실행 파일

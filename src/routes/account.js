@@ -4,11 +4,9 @@ const checkDuplicatedId = require("../middlewares/checkDuplicatedId");
 const makeAccessToken = require("../utils/makeAccessToken");
 const makeRefreshToken = require("../utils/makeRefreshToken");
 const checkLogin = require("../middlewares/checkLogin");
-const jwt = require("jsonwebtoken");
-const requestIp = require("request-ip");
-const loggingModel = require("../mongooseSchema/loggingSchema");
 const { body } = require("express-validator");
 const validate = require("../middlewares/validationResult");
+const redis = require("redis").createClient();
 
 //로그인
 router.post(
@@ -37,8 +35,9 @@ router.post(
         `SELECT idx, nickname,rank FROM backend.account WHERE id = $1 AND password = $2`,
         [id, pw]
       );
-      const account = selectAccountQueryResult.rows;
-      if (!account.length) {
+
+      const account = selectAccountQueryResult.rows[0];
+      if (!account) {
         throw new Error("아이디/비밀번호가 일치하지 않습니다.");
       }
 
@@ -46,27 +45,68 @@ router.post(
       const accessToken = makeAccessToken({
         idx: account.idx,
         nickname: account.nickname,
-        admin: false,
+        rank: account.rank,
       });
       const refreshToken = makeRefreshToken({
         idx: account.idx,
         nickname: account.nickname,
-        admin: false,
+        rank: account.rank,
       });
-      console.log(account.rank);
 
-      if (account.rank === "admin") {
-        accessToken.admin = true;
-        refreshToken.admin = true;
+      await redis.connect();
+      let todayVisitorData = await redis.get("today_visitor");
+      if (todayVisitorData) {
+        await redis.set("today_visitor", parseInt(todayVisitorData) + 1);
+      } else {
+        await redis.set("today_visitor", 1);
       }
+      let totalVistorData = await redis.get("total_visitor");
+      if (totalVistorData) {
+        await redis.set("total_visitor", parseInt(totalVistorData) + 1);
+      } else {
+        await redis.set("total_visitor", 1);
+      }
+
+      await redis.zAdd("login_userlist", [
+        { score: totalVistorData, value: String(account.idx) },
+      ]);
+      let loginUserList = await redis.ZRANGE(
+        "login_userlist",
+        0,
+        -1,
+        "withscores",
+        (err, result) => {
+          console.log(result);
+        }
+      );
+
+      let iter = 0;
+      while (loginUserList > 5) {
+        await redis.ZREM("login_userlist", loginUserList[iter]);
+        loginUserList = await redis.ZRANGE(
+          "login_userlist",
+          0,
+          -1,
+          "withscores",
+          (err, result) => {
+            console.log(result);
+          }
+        );
+        iter++;
+      }
+
       res.cookie("access_token", accessToken);
       res.cookie("refresh_token", refreshToken);
 
       result.success = true;
+      result.data = await redis.get("today_visitor");
+      res.result = result;
       res.send(result);
     } catch (e) {
       console.log(e);
       return next(e);
+    } finally {
+      redis.disconnect();
     }
   }
 );
@@ -82,17 +122,9 @@ router.delete("/logout", checkLogin, async (req, res, next) => {
     const loginUser = req.loginUser;
 
     res.clearCookie("access_token");
-    await loggingModel.create({
-      type: "DELETE/ account/logout",
-      client: loginUser.idx,
-      client_ip: requestIp.getClientIp(req),
-      request: req.body,
-      response: {
-        success: true,
-        data: {},
-      },
-    });
+
     result.success = true;
+    res.result = result;
     res.send(result);
   } catch (e) {
     return next(e);
@@ -142,19 +174,9 @@ router.post(
         [id, pw, name, birth, phoneNumber, email, nickname, gender]
       );
 
-      await loggingModel.create({
-        type: "POST/ account",
-        client: "null",
-        client_ip: requestIp.getClientIp(req),
-        request: req.body,
-        response: {
-          success: true,
-          data: {},
-        },
-      });
-
       // 결과 전송
       result.success = true;
+      res.result = result;
       res.send(result);
     } catch (e) {
       return next(e);
@@ -176,17 +198,9 @@ router.delete("/", checkLogin, async (req, res, next) => {
       loginUser.idx,
     ]);
     res.clearCookie("access_token");
-    await loggingModel.create({
-      type: "DELETE/ account",
-      client: loginUser.idx,
-      client_ip: requestIp.getClientIp(req),
-      request: req.body,
-      response: {
-        success: true,
-        data: {},
-      },
-    });
+
     result.success = true;
+    res.result = result;
     res.send(result);
   } catch (e) {
     return next(e);
@@ -218,21 +232,13 @@ router.get(
         [email, phoneNumber]
       );
       const account = selectAccountQueryResult.rows[0];
-      if (!account.length) {
+      if (!account) {
         throw new Error("일치하는 아이디가 없습니다.");
       }
-      await loggingModel.create({
-        type: "GET/ account/find-id",
-        client: "null",
-        client_ip: requestIp.getClientIp(req),
-        request: req.body,
-        response: {
-          success: true,
-          data: account,
-        },
-      });
+
       result.success = true;
       result.data = account;
+      res.result = result;
       res.send(result);
     } catch (e) {
       return next(e);
@@ -263,23 +269,13 @@ router.get(
         [id, phoneNumber]
       );
       const account = selectAccountQueryResult.rows[0];
-      if (!account.length) {
+      if (!account) {
         throw new Error("일치하는 비밀번호가 없습니다");
       }
 
-      await loggingModel.create({
-        type: "GET/ account/find-pw",
-        client: "null",
-        client_ip: requestIp.getClientIp(req),
-        request: req.body,
-        response: {
-          success: true,
-          data: account,
-        },
-      });
-
       result.success = true;
       result.data = account;
+      res.result = result;
       res.send(result);
     } catch (e) {
       return next(e);
@@ -302,21 +298,12 @@ router.get("/", checkLogin, async (req, res, next) => {
     );
 
     const account = selectAccountQueryResult.rows[0];
-    if (!account.length) {
+    if (!account) {
       throw new Error("일치하는 정보가 없습니다.");
     }
-    await loggingModel.create({
-      type: "GET/ account",
-      client: loginUser.idx,
-      client_ip: requestIp.getClientIp(req),
-      request: req.body,
-      response: {
-        success: true,
-        data: account,
-      },
-    });
     result.success = true;
     result.data = account;
+    res.result = result;
     res.send(result);
   } catch (e) {
     return next(e);
@@ -380,18 +367,8 @@ router.put(
         ]
       );
 
-      await loggingModel.create({
-        type: "PUT/ account",
-        client: loginUser.idx,
-        client_ip: requestIp.getClientIp(req),
-        request: req.body,
-        response: {
-          success: true,
-          data: {},
-        },
-      });
-
       result.success = true;
+      res.result = result;
       res.send(result);
     } catch (e) {
       return next(e);
