@@ -12,6 +12,7 @@ router.post("/", async (req, res) => {
       {
         idx: data.idx,
         nickname: data.nickname,
+        admin: token.admin,
       },
       process.env.TOKEN_SECRET_KEY,
       {
