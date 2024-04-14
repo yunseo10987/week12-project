@@ -152,18 +152,14 @@ router.post(
       data: {},
     };
     try {
-      if (req.file === undefined || req.file === null || req.file === "") {
-        await pool.query(
-          `INSERT INTO backend.account(id, password, name, birth, phonenumber, email, nickname, gender) VALUES($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [id, pw, name, birth, phoneNumber, email, nickname, gender]
-        );
-      } else {
-        const filePath = req.file.location;
-        await pool.query(
-          `INSERT INTO backend.account(id, password, name, birth, phonenumber, email, nickname, gender, profile_image) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          [id, pw, name, birth, phoneNumber, email, nickname, gender, filePath]
-        );
+      let filePath = req.file?.location;
+      if (filePath === undefined) {
+        filePath = null;
       }
+      await pool.query(
+        `INSERT INTO backend.account(id, password, name, birth, phonenumber, email, nickname, gender, profile_image) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [id, pw, name, birth, phoneNumber, email, nickname, gender, filePath]
+      );
 
       // 결과 전송
       result.success = true;
@@ -362,39 +358,25 @@ router.put(
     try {
       const loginUser = req.decoded;
 
-      if (req.file === undefined || req.file === null || req.file === "") {
-        await pool.query(
-          `UPDATE backend.account SET id =$1, password=$2, name=$3, birth=$4, phonenumber=$5, email=$6, nickname=$7, gender=$8 WHERE idx =$9`,
-          [
-            id,
-            pw,
-            name,
-            birth,
-            phoneNumber,
-            email,
-            nickname,
-            gender,
-            loginUser.idx,
-          ]
-        );
-      } else {
-        const filePath = req.file.location;
-        await pool.query(
-          `UPDATE backend.account SET id =$1, password=$2, name=$3, birth=$4, phonenumber=$5, email=$6, nickname=$7, gender=$8,profile_image =$9 WHERE idx =$10`,
-          [
-            id,
-            pw,
-            name,
-            birth,
-            phoneNumber,
-            email,
-            nickname,
-            gender,
-            filePath,
-            loginUser.idx,
-          ]
-        );
+      let filePath = req.file?.location;
+      if (filePath === undefined) {
+        filePath = null;
       }
+      await pool.query(
+        `UPDATE backend.account SET id =$1, password=$2, name=$3, birth=$4, phonenumber=$5, email=$6, nickname=$7, gender=$8,profile_image =$9 WHERE idx =$10`,
+        [
+          id,
+          pw,
+          name,
+          birth,
+          phoneNumber,
+          email,
+          nickname,
+          gender,
+          filePath,
+          loginUser.idx,
+        ]
+      );
 
       result.success = true;
       res.result = result;
