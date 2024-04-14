@@ -1,8 +1,9 @@
-const redis = require("redis").createClient();
+const { InternalServerErrorException } = require("./Exception");
 
 const loginUsers = async function (account) {
+  const redis = require("redis").createClient();
+  await redis.connect();
   try {
-    await redis.connect();
     await redis.zAdd("login_userlist", [
       { score: Date.now(), value: String(account.idx) },
     ]);
@@ -10,27 +11,16 @@ const loginUsers = async function (account) {
       "login_userlist",
       0,
       -1,
-      "withscores",
-      (err, result) => {
-        console.log(result);
-      }
+      "withscores"
     );
-    let iter = 0;
+    let i = 0;
     while (loginUserList.length > 5) {
-      await redis.ZREM("login_userlist", loginUserList[iter]);
-      loginUserList = await redis.ZRANGE(
-        "login_userlist",
-        0,
-        -1,
-        "withscores",
-        (err, result) => {
-          console.log(result);
-        }
-      );
-      iter++;
+      await redis.ZREM("login_userlist", loginUserList[i]);
+      loginUserList = await redis.ZRANGE("login_userlist", 0, -1, "withscores");
+      i++;
     }
   } catch (e) {
-    throw new Error("서버 에러");
+    throw new InternalServerErrorException("서버 에러");
   } finally {
     await redis.disconnect();
   }

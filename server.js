@@ -56,6 +56,7 @@ const replyCommentApi = require("./src/routes/replyComment.js");
 const refreshTokenApi = require("./src/utils/remakeAccessToken.js");
 const visitorApi = require("./src/routes/visitor.js");
 const loggingApi = require("./src/routes/logging.js");
+const { Exception, NotFoundException } = require("./src/utils/Exception.js");
 
 app.use(loggingModule);
 
@@ -69,21 +70,26 @@ app.use("/visitor", visitorApi);
 app.use("/refresh-token", refreshTokenApi);
 
 app.use((req, res, next) => {
-  const error = new Error("요청된 api가 없습니다.");
-  error.status = 404;
-  throw error;
+  throw new NotFoundException("API가 없습니다.");
 });
 app.use(async (err, req, res, next) => {
-  console.log(err);
-  res.result = {
-    success: false,
-    message: err,
-  };
-  if (!err.status) {
-    err.message = "서버 에러";
+  if (err instanceof Exception) {
+    // early return pattern
+    return res.status(err.status).send({
+      message: err.message,
+    });
   }
-  console.log("?");
-  res.status(err.status || 500).send(res.result);
+
+  if (err instanceof SyntaxError && err.type === "entity.parse.failed") {
+    return res.status(400).send({
+      message: "json 파싱 실패",
+    });
+  }
+
+  // postgresSQL, session
+  res.status(500).send({
+    message: "진짜 에러",
+  });
 });
 
 //Web Server 실행 코드

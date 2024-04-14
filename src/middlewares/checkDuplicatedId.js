@@ -1,4 +1,5 @@
 const client = require("../../database/connect/postgresql");
+const { BadRequestException } = require("../utils/Exception");
 
 const checkDuplicatedId = async (req, res, next) => {
   const { id } = req.body;
@@ -9,7 +10,7 @@ const checkDuplicatedId = async (req, res, next) => {
     );
 
     if (account.rows.length) {
-      throw new Error("이미 있는 아이디입니다.");
+      throw new BadRequestException("아이디가 이미 있습니다.");
     }
     next();
   } catch (e) {

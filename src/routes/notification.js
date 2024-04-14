@@ -3,11 +3,6 @@ const notification = require("../mongooseSchema/notificationsSchema");
 const checkLogin = require("../middlewares/checkLogin");
 
 router.get("/", checkLogin, async (req, res, next) => {
-  const result = {
-    success: false,
-    data: {},
-  };
-
   try {
     const loginUser = req.decoded;
     const notifications = await notification
@@ -23,12 +18,11 @@ router.get("/", checkLogin, async (req, res, next) => {
       { is_read: true }
     );
 
-    result.success = true;
-    result.data = notifications;
-    res.result = result;
-    res.send(result);
+    res.send({
+      success: true,
+      data: notifications,
+    });
   } catch (e) {
-    e.api = "GET/ notification";
     return next(e);
   }
 });

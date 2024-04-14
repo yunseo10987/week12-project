@@ -2,6 +2,13 @@ const loggingModel = require("../mongooseSchema/loggingSchema");
 const requestIp = require("request-ip");
 
 const loggingModule = (req, res, next) => {
+  const originalSend = res.send;
+  res.send = (result) => {
+    res.result = result;
+    res.send = originalSend;
+    return res.send(result);
+  };
+
   res.on("finish", async () => {
     try {
       await loggingModel.create({
@@ -16,6 +23,7 @@ const loggingModule = (req, res, next) => {
       console.log(e.message);
     }
   });
+
   next();
 };
 

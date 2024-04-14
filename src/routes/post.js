@@ -3,28 +3,24 @@ const router = express.Router();
 const pool = require("../../database/connect/postgresql");
 const notification = require("../mongooseSchema/notificationsSchema");
 const checkLogin = require("../middlewares/checkLogin");
-const jwt = require("jsonwebtoken");
 const { body } = require("express-validator");
 const validate = require("../middlewares/validationResult");
 const makeNotification = require("../utils/makeNotificationModule");
+const { NotFoundException } = require("../utils/Exception");
 
 //게시글 전체 목록
 router.get("/all", async (req, res, next) => {
-  const result = {
-    success: false,
-    data: {},
-  };
   try {
     const post = await pool.query(`
       SELECT P.idx, P.created_at, PC.name, P.title, P.idx 
       FROM backend.post P 
       LEFT OUTER JOIN backend.post_category PC ON P.post_category_idx = PC.idx 
-      ORDER BY P.idx DESC`);
+      ORDER BY P.idx DESC`).rows;
 
-    result.data = post.rows;
-    result.success = true;
-    res.result = result;
-    res.send(result);
+    res.send({
+      success: true,
+      data: post,
+    });
   } catch (e) {
     return next(e);
   }
@@ -39,10 +35,6 @@ router.post(
   validate,
   async (req, res, next) => {
     const { title, content, category } = req.body;
-    const result = {
-      success: false,
-      data: {},
-    };
 
     try {
       const loginUser = req.decoded;
@@ -56,9 +48,10 @@ router.post(
 
       makeNotification("global", nickname, { postIdx: postIdx });
 
-      result.success = true;
-      res.result = result;
-      res.send(result);
+      res.send({
+        success: true,
+        data: {},
+      });
     } catch (e) {
       return next(e);
     }
@@ -69,10 +62,6 @@ router.post(
 router.get("/:postIdx", async (req, res, next) => {
   const { postIdx } = req.params;
 
-  const result = {
-    success: false,
-    data: {},
-  };
   try {
     const selectQueryResult = await pool.query(
       `
@@ -85,31 +74,19 @@ router.get("/:postIdx", async (req, res, next) => {
       [postIdx]
     );
     const post = selectQueryResult.rows[0];
+
     if (!post) {
-      const error = new Error();
-      error.status = 404;
-      error.message = "게시물을 찾을 수 없습니다.";
-      throw error;
+      throw new NotFoundException("게시물을 찾을 수 없습니다.");
     }
 
-    result.success = true;
-    result.data = post;
-    res.result = result;
-    res.send(result);
+    res.send({
+      success: true,
+      data: post,
+    });
   } catch (e) {
     return next(e);
   }
 });
-
-// const wrapper = (requestHandler) => {
-//   return async (req, res, next) => {
-//     try {
-//       await requestHandler(req, res, next);
-//     } catch (err) {
-//       return next(err);
-//     }
-//   };
-// };
 
 //게시글 수정
 router.put(
@@ -121,10 +98,7 @@ router.put(
   async (req, res, next) => {
     const { postIdx } = req.body;
     const { title, content, category } = req.body;
-    const result = {
-      success: false,
-      data: {},
-    };
+
     try {
       const loginUser = req.decoded;
 
@@ -133,9 +107,10 @@ router.put(
         [title, content, category, postIdx, loginUser.idx]
       );
 
-      result.success = true;
-      res.result = result;
-      res.send(result);
+      res.send({
+        success: true,
+        data: {},
+      });
     } catch (e) {
       return next(e);
     }
@@ -145,10 +120,6 @@ router.put(
 //게시글 삭제
 router.delete("/", checkLogin, async (req, res, next) => {
   const { postIdx } = req.body;
-  const result = {
-    success: false,
-    data: {},
-  };
 
   try {
     const loginUser = req.decoded;
@@ -158,9 +129,10 @@ router.delete("/", checkLogin, async (req, res, next) => {
       [postIdx, loginUser.idx]
     );
 
-    result.success = true;
-    res.result = result;
-    res.send(result);
+    res.send({
+      success: true,
+      data: {},
+    });
   } catch (e) {
     return next(e);
   }
@@ -169,10 +141,7 @@ router.delete("/", checkLogin, async (req, res, next) => {
 //게시물 좋아요
 router.put("/likes", checkLogin, async (req, res, next) => {
   const { postIdx } = req.body;
-  const result = {
-    success: false,
-    data: {},
-  };
+  const message = null;
   const poolClient = await pool.connect();
 
   try {
@@ -186,6 +155,10 @@ router.put("/likes", checkLogin, async (req, res, next) => {
     );
     const postLikeState = selectPostLikeQueryResult.rows[0];
 
+    if (postLikeState === undefined || postLikeState === "") {
+      throw new NotFoundException("게시물을 찾을 수 없습니다.");
+    }
+
     if (postLikeState) {
       await poolClient.query(
         `DELETE FROM backend.post_likes WHERE post_idx = $1 AND account_idx = $2`,
@@ -196,7 +169,7 @@ router.put("/likes", checkLogin, async (req, res, next) => {
         [postIdx]
       );
 
-      result.message = "좋아요 취소";
+      message = "좋아요 취소";
     } else {
       await poolClient.query(
         `INSERT INTO backend.post_likes(post_idx, account_idx) VALUES($1, $2)`,
@@ -207,32 +180,40 @@ router.put("/likes", checkLogin, async (req, res, next) => {
         [postIdx]
       );
 
-      const postWriter = updatePostQueryResult.rows[0].account_idx;
-      if (postWriter !== loginUser.idx) {
+      const postWriterIdx = updatePostQueryResult.rows[0].account_idx;
+      if (
+        postWriterIdx === undefined ||
+        postWriterIdx === null ||
+        postWriterIdx === ""
+      ) {
+        throw new NotFoundException("게시자를 찾을 수 없습니다.");
+      }
+      if (postWriterIdx !== loginUser.idx) {
         await notification.create({
           type: "individual",
           writer: nickname,
           data: {
             postLikers: loginUser.idx,
           },
-          receiver: postWriter,
+          receiver: postWriterIdx,
           is_read: false,
         });
         makeNotification(
           "individual",
           nickname,
           { postLikers: loginUser.idx },
-          postWriter
+          postWriterIdx
         );
       }
-      result.message = "좋아요 추가";
+      message = "좋아요 추가";
     }
     await poolClient.query("COMMIT");
 
-    result.success = true;
     await poolClient.release();
-    res.result = result;
-    res.send(result);
+    res.send({
+      success: true,
+      data: {},
+    });
   } catch (e) {
     await poolClient.query("ROLLBACK");
     await poolClient.release();

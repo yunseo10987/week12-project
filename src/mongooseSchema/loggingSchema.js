@@ -2,17 +2,16 @@ const mongoose = require("mongoose");
 const Schema = mongoose.Schema;
 
 const logingSchema = new mongoose.Schema({
-  type: {
+  method: {
     type: String,
     required: true,
   },
-  client: {
+  entryPoint: {
     type: String,
     required: true,
   },
   client_ip: {
-    type: String,
-    required: true,
+    type: Schema.Types.Mixed,
   },
   request: {
     type: Schema.Types.Mixed,
