@@ -3,12 +3,10 @@ const router = express.Router();
 const pool = require("../../database/connect/postgresql");
 const notification = require("../mongooseSchema/notificationsSchema");
 const checkLogin = require("../middlewares/checkLogin");
-const validatePost = require("../middlewares/validatePost");
 const jwt = require("jsonwebtoken");
-const loggingModel = require("../mongooseSchema/loggingSchema");
-const requestIp = require("request-ip");
 const { body } = require("express-validator");
 const validate = require("../middlewares/validationResult");
+const makeNotification = require("../utils/makeNotificationModule");
 
 //게시글 전체 목록
 router.get("/all", async (req, res, next) => {
@@ -23,19 +21,9 @@ router.get("/all", async (req, res, next) => {
       LEFT OUTER JOIN backend.post_category PC ON P.post_category_idx = PC.idx 
       ORDER BY P.idx DESC`);
 
-    await loggingModel.create({
-      type: "GET/ post/all",
-      client: "null",
-      client_ip: requestIp.getClientIp(req),
-      request: req.body,
-      response: {
-        success: true,
-        data: post.rows,
-      },
-    });
-
     result.data = post.rows;
     result.success = true;
+    res.result = result;
     res.send(result);
   } catch (e) {
     return next(e);
@@ -57,7 +45,7 @@ router.post(
     };
 
     try {
-      const loginUser = req.loginUser;
+      const loginUser = req.decoded;
 
       const insertPostQueryResult = await pool.query(
         `INSERT INTO backend.post(title, content, account_idx, post_category_idx) VALUES($1, $2, $3, $4) RETURNING idx`,
@@ -66,26 +54,10 @@ router.post(
       const postIdx = insertPostQueryResult.rows[0].idx;
       const nickname = loginUser.nickname;
 
-      await notification.create({
-        type: "global",
-        writer: nickname,
-        data: {
-          postIdx: postIdx,
-        },
-      });
-
-      await loggingModel.create({
-        type: "POST/ post",
-        client: loginUser.idx,
-        client_ip: requestIp.getClientIp(req),
-        request: req.body,
-        response: {
-          success: true,
-          data: {},
-        },
-      });
+      makeNotification("global", nickname, { postIdx: postIdx });
 
       result.success = true;
+      res.result = result;
       res.send(result);
     } catch (e) {
       return next(e);
@@ -114,25 +86,15 @@ router.get("/:postIdx", async (req, res, next) => {
     );
     const post = selectQueryResult.rows[0];
     if (!post) {
-      return next({
-        status: 404,
-        message: "찾을 수 없습니다.",
-      });
+      const error = new Error();
+      error.status = 404;
+      error.message = "게시물을 찾을 수 없습니다.";
+      throw error;
     }
-
-    await loggingModel.create({
-      type: "GET/ post/:postIdx",
-      client: "null",
-      client_ip: requestIp.getClientIp(req),
-      request: req.body,
-      response: {
-        success: true,
-        data: post,
-      },
-    });
 
     result.success = true;
     result.data = post;
+    res.result = result;
     res.send(result);
   } catch (e) {
     return next(e);
@@ -164,25 +126,15 @@ router.put(
       data: {},
     };
     try {
-      const loginUser = req.loginUser;
+      const loginUser = req.decoded;
 
       await pool.query(
         `UPDATE backend.post SET title=$1, content=$2,post_category_idx=$3 WHERE idx = $4 AND account_idx = $5`,
         [title, content, category, postIdx, loginUser.idx]
       );
 
-      await loggingModel.create({
-        type: "PUT/ post",
-        client: loginUser.idx,
-        client_ip: requestIp.getClientIp(req),
-        request: req.body,
-        response: {
-          success: true,
-          data: {},
-        },
-      });
-
       result.success = true;
+      res.result = result;
       res.send(result);
     } catch (e) {
       return next(e);
@@ -199,24 +151,15 @@ router.delete("/", checkLogin, async (req, res, next) => {
   };
 
   try {
-    const loginUser = jwt.decode(req.cookies.access_token);
+    const loginUser = req.decoded;
 
     await pool.query(
       `DELETE FROM backend.post WHERE idx = $1 AND account_idx = $2`,
       [postIdx, loginUser.idx]
     );
 
-    await loggingModel.create({
-      type: "DELETE/ post",
-      client: loginUser.idx,
-      client_ip: requestIp.getClientIp(req),
-      request: req.body,
-      response: {
-        success: true,
-        data: {},
-      },
-    });
     result.success = true;
+    res.result = result;
     res.send(result);
   } catch (e) {
     return next(e);
@@ -233,7 +176,7 @@ router.put("/likes", checkLogin, async (req, res, next) => {
   const poolClient = await pool.connect();
 
   try {
-    const loginUser = req.loginUser;
+    const loginUser = req.decoded;
     const nickname = loginUser.nickname;
 
     await poolClient.query("BEGIN");
@@ -275,24 +218,20 @@ router.put("/likes", checkLogin, async (req, res, next) => {
           receiver: postWriter,
           is_read: false,
         });
+        makeNotification(
+          "individual",
+          nickname,
+          { postLikers: loginUser.idx },
+          postWriter
+        );
       }
       result.message = "좋아요 추가";
     }
     await poolClient.query("COMMIT");
 
-    await loggingModel.create({
-      type: "PUT/ post/likes",
-      client: loginUser.idx,
-      client_ip: requestIp.getClientIp(req),
-      request: req.body,
-      response: {
-        success: true,
-        data: {},
-      },
-    });
-
     result.success = true;
     await poolClient.release();
+    res.result = result;
     res.send(result);
   } catch (e) {
     await poolClient.query("ROLLBACK");

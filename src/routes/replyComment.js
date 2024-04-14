@@ -4,16 +4,19 @@ const pool = require("../../database/connect/postgresql");
 const notification = require("../mongooseSchema/notificationsSchema");
 const validateComment = require("../middlewares/validateComment");
 const checkLogin = require("../middlewares/checkLogin");
+const jwt = require("jsonwebtoken");
+const requestIp = require("request-ip");
+const loggingModel = require("../mongooseSchema/loggingSchema");
 
 //대댓글 쓰기
 router.post("/", checkLogin, validateComment, async (req, res, next) => {
   const { content, postIdx, commentIdx } = req.body;
   const result = {
     success: false,
-    message: "",
+    data: {},
   };
   try {
-    const loginUser = jwt.decode(req.cookies.access_token);
+    const loginUser = req.decoded;
 
     await pool.query(
       `INSERT INTO backend.reply_comment(content, post_idx, account_idx, comment_idx) VALUES($1, $2, $3, $4)`,
@@ -36,14 +39,15 @@ router.post("/", checkLogin, validateComment, async (req, res, next) => {
       });
     }
     result.success = true;
+    res.result = result;
+    res.send(result);
   } catch (e) {
     return next(e);
   }
-  res.send(result);
 });
 
 //대댓글 수정
-router.put("/", checkLogin, validateComment, async (req, res) => {
+router.put("/", checkLogin, validateComment, async (req, res, next) => {
   const sql =
     "UPDATE backend.reply_comment SET content=$1 WHERE idx = $2 AND account_idx = $3";
   //로그인한 이용자가 댓글 작성자와 다를 수도 있기 때문에
@@ -53,19 +57,20 @@ router.put("/", checkLogin, validateComment, async (req, res) => {
     message: "",
   };
   try {
-    const loginUser = jwt.decode(req.cookies.access_token);
+    const loginUser = req.decoded;
 
     await query(sql, [content, replyCommentIdx, loginUser.idx]);
+
     result.success = true;
-  } catch (e) {
-    result.message = e.message;
-  } finally {
+    res.result = result;
     res.send(result);
+  } catch (e) {
+    return next(e);
   }
 });
 
 //대댓글 삭제
-router.delete("/", checkLogin, async (req, res) => {
+router.delete("/", checkLogin, async (req, res, next) => {
   const sql =
     "DELETE FROM backend.reply_comment WHERE idx = $1 AND account_idx = $2";
   const { replyCommentIdx } = req.body;
@@ -75,19 +80,20 @@ router.delete("/", checkLogin, async (req, res) => {
   };
 
   try {
-    const loginUser = jwt.decode(req.cookies.access_token);
+    const loginUser = req.decoded;
 
     await query(sql, [replyCommentIdx, loginUser.idx]);
+
     result.success = true;
-  } catch (e) {
-    result.message = e.message;
-  } finally {
+    res.result = result;
     res.send(result);
+  } catch (e) {
+    return next(e);
   }
 });
 
 //대댓글 좋아요
-router.put("/likes", checkLogin, async (req, res) => {
+router.put("/likes", checkLogin, async (req, res, next) => {
   const { replyCommentIdx } = req.body;
   const result = {
     success: false,
@@ -96,7 +102,7 @@ router.put("/likes", checkLogin, async (req, res) => {
   const poolClient = pool.connect();
 
   try {
-    const loginUser = jwt.decode(req.cookies.access_token);
+    const loginUser = req.decoded;
 
     await poolClient.query("BEGIN");
     const isLikers = await poolClient.query(
@@ -127,13 +133,15 @@ router.put("/likes", checkLogin, async (req, res) => {
       result.message = "좋아요 추가";
     }
     await poolClient.query("COMMIT");
+    await poolClient.release();
+
     result.success = true;
+    res.result = result;
+    res.send(result);
   } catch (e) {
     await poolClient.query("ROLLBACK");
-    result.message = e.message;
-  } finally {
-    (await poolClient).release();
-    res.send(result);
+    await poolClient.release();
+    return next(e);
   }
 });
 

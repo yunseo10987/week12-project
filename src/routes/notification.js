@@ -1,9 +1,6 @@
 const router = require("express").Router();
 const notification = require("../mongooseSchema/notificationsSchema");
 const checkLogin = require("../middlewares/checkLogin");
-const jwt = require("jsonwebtoken");
-const loggingModel = require("../mongooseSchema/loggingSchema");
-const requestIp = require("request-ip");
 
 router.get("/", checkLogin, async (req, res, next) => {
   const result = {
@@ -12,7 +9,7 @@ router.get("/", checkLogin, async (req, res, next) => {
   };
 
   try {
-    const loginUser = req.loginUser;
+    const loginUser = req.decoded;
     const notifications = await notification
       .find({
         $or: [
@@ -26,18 +23,9 @@ router.get("/", checkLogin, async (req, res, next) => {
       { is_read: true }
     );
 
-    await loggingModel.create({
-      type: "GET/ notification",
-      client: loginUser.idx,
-      client_ip: requestIp.getClientIp(req),
-      request: req.body,
-      response: {
-        success: true,
-        data: notifications,
-      },
-    });
     result.success = true;
     result.data = notifications;
+    res.result = result;
     res.send(result);
   } catch (e) {
     e.api = "GET/ notification";

@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const redis = require("redis").createClient();
 const checkLogin = require("../middlewares/checkLogin");
+const pool = require("../../database/connect/postgresql");
 
 router.get("/today", checkLogin, async (req, res, next) => {
   const result = {
@@ -28,15 +29,28 @@ router.get("/total", checkLogin, async (req, res, next) => {
   };
   try {
     await redis.connect();
-    let data = await redis.get("total_visitor");
-    result.data.visitor = data;
+    const selectVisitorQueryResult = await pool.query(
+      `SELECT login_number FROM backend.visitor`
+    );
+    let loginUsersNumber = 0;
+
+    if (selectVisitorQueryResult.rows.length != 0) {
+      for (let i = 0; i < selectVisitorQueryResult.rows.length; i++) {
+        loginUsersNumber += selectVisitorQueryResult.rows[i].login_number;
+      }
+      result.data.visitor = loginUsersNumber;
+    } else {
+      let data = await redis.get("today_visitor");
+      result.data.visitor = data;
+    }
+
     result.success = true;
     res.result = result;
     res.send(result);
   } catch (e) {
     return next(e);
   } finally {
-    redis.disconnect();
+    await redis.disconnect();
   }
 });
 
@@ -67,22 +81,22 @@ router.get("/userList", checkLogin, async (req, res, next) => {
   }
 });
 
-router.delete("/", checkLogin, async (req, res, next) => {
-  const result = {
-    success: false,
-    data: {},
-  };
-  try {
-    await redis.connect();
-    await redis.sendCommand(["SAVE"]);
-    await redis.del("today_visitor");
-    result.success = true;
-    res.send(result);
-  } catch (e) {
-    return next(e);
-  } finally {
-    redis.disconnect();
-  }
-});
+// router.delete("/", checkLogin, async (req, res, next) => {
+//   const result = {
+//     success: false,
+//     data: {},
+//   };
+//   try {
+//     await redis.connect();
+//     await redis.sendCommand(["SAVE"]);
+//     await redis.del("today_visitor");
+//     result.success = true;
+//     res.send(result);
+//   } catch (e) {
+//     return next(e);
+//   } finally {
+//     redis.disconnect();
+//   }
+// });
 
 module.exports = router;

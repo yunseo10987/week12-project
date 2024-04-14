@@ -1,4 +1,4 @@
-const loggingModel = require("./src/mongooseSchema/loggingSchema.js");
+const loggingModel = require("../mongooseSchema/loggingSchema");
 const requestIp = require("request-ip");
 
 const loggingModule = (req, res, next) => {

@@ -1,12 +1,10 @@
 const express = require("express"); //express파일을 import
 const { buffer } = require("stream/consumers");
-const pool = require("./database/connect/postgresql");
 const mongoose = require("mongoose");
 const cookieParser = require("cookie-parser");
 const fs = require("fs"); //외부 파일을 가져옴
 const https = require("https");
-const schedule = require("node-schedule");
-const redis = require("redis").createClient();
+
 const loggingModule = require("./src/utils/loggingModule.js");
 const sslPort = 8443;
 const app = express();
@@ -71,15 +69,20 @@ app.use("/visitor", visitorApi);
 app.use("/refresh-token", refreshTokenApi);
 
 app.use((req, res, next) => {
-  const error = new Error("api not found");
+  const error = new Error("요청된 api가 없습니다.");
   error.status = 404;
   throw error;
 });
 app.use(async (err, req, res, next) => {
+  console.log(err);
   res.result = {
     success: false,
-    message: err.message,
+    message: err,
   };
+  if (!err.status) {
+    err.message = "서버 에러";
+  }
+  console.log("?");
   res.status(err.status || 500).send(res.result);
 });
 
@@ -87,34 +90,6 @@ app.use(async (err, req, res, next) => {
 
 app.listen(port, () => {
   console.log(`${port}번에서 HTTP Web Server 실행`);
-  schedule.scheduleJob("0 0 0 * * *", async () => {
-    try {
-      await redis.connect();
-      let todayVisitor = await redis.get("today_visitor");
-      await pool.query(
-        `INSERT INTO backend.visitor(login_number) VALUES ($1)`,
-        [todayVisitor]
-      );
-      const loginUserList = await redis.ZRANGE(
-        "login_userlist",
-        0,
-        -1,
-        "withscores",
-        (err, result) => {
-          console.log(result);
-        }
-      );
-      await pool.query(
-        `INSERT INTO backend.login_users(login_users) VALUES ($1)`,
-        [loginUserList.reverse()]
-      );
-      await redis.del("today_visitor");
-    } catch (e) {
-      return next(e);
-    } finally {
-      redis.disconnect();
-    }
-  });
 });
 
 //https 실행 파일

@@ -6,8 +6,28 @@ const makeRefreshToken = require("../utils/makeRefreshToken");
 const checkLogin = require("../middlewares/checkLogin");
 const { body } = require("express-validator");
 const validate = require("../middlewares/validationResult");
-const redis = require("redis").createClient();
+const todayVisitorModule = require("../utils/todayVisitorModule");
+const loginUserListModule = require("../utils/loginUserListModule");
+const upload = require("../middlewares/multer");
+const multer = require("multer");
+const multerS3 = require("../middlewares/multerS3");
+const aws = require("aws-sdk");
 
+// router.post("/uploads", multerS3.single("images"), async (req, res, next) => {
+//   const result = {
+//     success: false,
+//     data: {},
+//   };
+//   try {
+//     console.log(req.file.location);
+//     result.success = true;
+//     res.result = result;
+//     res.send(result);
+//   } catch (e) {
+//     console.log(e);
+//     return next(e);
+//   }
+// });
 //로그인
 router.post(
   "/login",
@@ -38,7 +58,10 @@ router.post(
 
       const account = selectAccountQueryResult.rows[0];
       if (!account) {
-        throw new Error("아이디/비밀번호가 일치하지 않습니다.");
+        const error = new Error();
+        error.message = "아이디/비밀번호가 일치하지 않습니다.";
+        error.status = 401;
+        throw error;
       }
 
       //성공 시 토큰 발행
@@ -53,60 +76,18 @@ router.post(
         rank: account.rank,
       });
 
-      await redis.connect();
-      let todayVisitorData = await redis.get("today_visitor");
-      if (todayVisitorData) {
-        await redis.set("today_visitor", parseInt(todayVisitorData) + 1);
-      } else {
-        await redis.set("today_visitor", 1);
-      }
-      let totalVistorData = await redis.get("total_visitor");
-      if (totalVistorData) {
-        await redis.set("total_visitor", parseInt(totalVistorData) + 1);
-      } else {
-        await redis.set("total_visitor", 1);
-      }
-
-      await redis.zAdd("login_userlist", [
-        { score: totalVistorData, value: String(account.idx) },
-      ]);
-      let loginUserList = await redis.ZRANGE(
-        "login_userlist",
-        0,
-        -1,
-        "withscores",
-        (err, result) => {
-          console.log(result);
-        }
-      );
-
-      let iter = 0;
-      while (loginUserList > 5) {
-        await redis.ZREM("login_userlist", loginUserList[iter]);
-        loginUserList = await redis.ZRANGE(
-          "login_userlist",
-          0,
-          -1,
-          "withscores",
-          (err, result) => {
-            console.log(result);
-          }
-        );
-        iter++;
-      }
+      todayVisitorModule();
+      loginUserListModule(account);
 
       res.cookie("access_token", accessToken);
       res.cookie("refresh_token", refreshToken);
 
       result.success = true;
-      result.data = await redis.get("today_visitor");
       res.result = result;
       res.send(result);
     } catch (e) {
       console.log(e);
       return next(e);
-    } finally {
-      redis.disconnect();
     }
   }
 );
@@ -119,7 +100,7 @@ router.delete("/logout", checkLogin, async (req, res, next) => {
   };
 
   try {
-    const loginUser = req.loginUser;
+    const loginUser = req.decoded;
 
     res.clearCookie("access_token");
 
@@ -134,6 +115,8 @@ router.delete("/logout", checkLogin, async (req, res, next) => {
 //회원 가입
 router.post(
   "/",
+  //   upload.single("images"),
+  multerS3.single("images"),
   body("id")
     .trim()
     .matches(/^(?=.*\d)(?=.*[a-z])[0-9a-z]{8,12}$/)
@@ -159,20 +142,28 @@ router.post(
   body("gender").trim().isIn(["male", "female"]),
   checkDuplicatedId,
   validate,
+
   async (req, res, next) => {
     const { id, pw, name, birth, phoneNumber, email, nickname, gender } =
       req.body;
+    console.log(id);
     const result = {
       success: false,
       data: {},
     };
-
     try {
-      //db 연결
-      await pool.query(
-        `INSERT INTO backend.account(id, password, name, birth, phonenumber, email, nickname, gender) VALUES($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [id, pw, name, birth, phoneNumber, email, nickname, gender]
-      );
+      if (req.file === undefined || req.file === null || req.file === "") {
+        await pool.query(
+          `INSERT INTO backend.account(id, password, name, birth, phonenumber, email, nickname, gender) VALUES($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [id, pw, name, birth, phoneNumber, email, nickname, gender]
+        );
+      } else {
+        const filePath = req.file.location;
+        await pool.query(
+          `INSERT INTO backend.account(id, password, name, birth, phonenumber, email, nickname, gender, profile_image) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [id, pw, name, birth, phoneNumber, email, nickname, gender, filePath]
+        );
+      }
 
       // 결과 전송
       result.success = true;
@@ -192,11 +183,25 @@ router.delete("/", checkLogin, async (req, res, next) => {
   };
 
   try {
-    const loginUser = req.loginUser;
+    const s3 = new aws.S3();
 
-    await pool.query(`DELETE FROM backend.account WHERE idx = $1`, [
-      loginUser.idx,
-    ]);
+    const loginUser = req.decoded;
+
+    const profileURL = await pool.query(
+      `DELETE FROM backend.account WHERE idx = $1 RETURNING profile_image`,
+      [loginUser.idx]
+    );
+    await s3.deleteObject(
+      {
+        Bucket: process.env.BUCKET_NAME,
+        Key: "1712945801078_인겜 1주차.jpg",
+      },
+      function (err, data) {
+        if (err) {
+          console.log(err);
+        }
+      }
+    );
     res.clearCookie("access_token");
 
     result.success = true;
@@ -233,7 +238,9 @@ router.get(
       );
       const account = selectAccountQueryResult.rows[0];
       if (!account) {
-        throw new Error("일치하는 아이디가 없습니다.");
+        const error = new Error("일치하는 아이디가 없습니다.");
+        error.status = 404;
+        throw error;
       }
 
       result.success = true;
@@ -270,7 +277,9 @@ router.get(
       );
       const account = selectAccountQueryResult.rows[0];
       if (!account) {
-        throw new Error("일치하는 비밀번호가 없습니다");
+        const error = new Error("일치하는 비밀번호가 없습니다.");
+        error.status = 404;
+        throw error;
       }
 
       result.success = true;
@@ -291,15 +300,17 @@ router.get("/", checkLogin, async (req, res, next) => {
   };
 
   try {
-    const loginUser = req.loginUser;
+    const loginUser = req.decoded;
     const selectAccountQueryResult = await pool.query(
-      `SELECT id, password, name, birth, phonenumber, email, nickname, gender FROM backend.account WHERE idx = $1`,
+      `SELECT id, password, name, birth, phonenumber, email, nickname, gender, profile_image FROM backend.account WHERE idx = $1`,
       [loginUser.idx]
     );
 
     const account = selectAccountQueryResult.rows[0];
     if (!account) {
-      throw new Error("일치하는 정보가 없습니다.");
+      const error = new Error("계정을 찾을 수 없습니다.");
+      error.status = 404;
+      throw error;
     }
     result.success = true;
     result.data = account;
@@ -349,23 +360,41 @@ router.put(
     };
 
     try {
-      const loginUser = req.loginUser;
+      const loginUser = req.decoded;
 
-      //db 연결
-      await pool.query(
-        `UPDATE backend.account SET id =$1, password=$2, name=$3, birth=$4, phonenumber=$5, email=$6, nickname=$7, gender=$8 WHERE idx =$9`,
-        [
-          id,
-          pw,
-          name,
-          birth,
-          phoneNumber,
-          email,
-          nickname,
-          gender,
-          loginUser.idx,
-        ]
-      );
+      if (req.file === undefined || req.file === null || req.file === "") {
+        await pool.query(
+          `UPDATE backend.account SET id =$1, password=$2, name=$3, birth=$4, phonenumber=$5, email=$6, nickname=$7, gender=$8 WHERE idx =$9`,
+          [
+            id,
+            pw,
+            name,
+            birth,
+            phoneNumber,
+            email,
+            nickname,
+            gender,
+            loginUser.idx,
+          ]
+        );
+      } else {
+        const filePath = req.file.location;
+        await pool.query(
+          `UPDATE backend.account SET id =$1, password=$2, name=$3, birth=$4, phonenumber=$5, email=$6, nickname=$7, gender=$8,profile_image =$9 WHERE idx =$10`,
+          [
+            id,
+            pw,
+            name,
+            birth,
+            phoneNumber,
+            email,
+            nickname,
+            gender,
+            filePath,
+            loginUser.idx,
+          ]
+        );
+      }
 
       result.success = true;
       res.result = result;

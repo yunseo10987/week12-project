@@ -3,11 +3,9 @@ const router = express.Router();
 const pool = require("../../database/connect/postgresql");
 const notification = require("../mongooseSchema/notificationsSchema");
 const checkLogin = require("../middlewares/checkLogin");
-const jwt = require("jsonwebtoken");
-const loggingModel = require("../mongooseSchema/loggingSchema");
-const requestIp = require("request-ip");
 const { body } = require("express-validator");
 const validate = require("../middlewares/validationResult");
+const makeNotification = require("../utils/makeNotificationModule");
 
 //댓글 쓰기
 router.post(
@@ -23,7 +21,7 @@ router.post(
     };
 
     try {
-      const loginUser = req.loginUser;
+      const loginUser = req.decoded;
 
       await pool.query(
         `INSERT INTO backend.comment(content, post_idx, account_idx) VALUES($1, $2, $3)`,
@@ -35,27 +33,16 @@ router.post(
       );
       const postWriter = selectPostQueryResult.rows[0].account_idx;
       if (postWriter !== loginUser.idx) {
-        await notification.create({
-          type: "individual",
-          writer: loginUser.nickname,
-          data: {
-            postIdx: postIdx,
-          },
-          receiver: postWriter,
-          is_read: false,
-        });
+        makeNotification(
+          "individual",
+          loginUser.nickname,
+          { postIdx: postIdx },
+          postWriter
+        );
       }
-      await loggingModel.create({
-        type: "POST/ comment",
-        client: loginUser.idx,
-        client_ip: requestIp.getClientIp(req),
-        request: req.body,
-        response: {
-          success: true,
-          data: {},
-        },
-      });
+
       result.success = true;
+      res.result = result;
       res.send(result);
     } catch (e) {
       return next(e);
@@ -67,18 +54,21 @@ router.post(
 
 router.get("/", async (req, res, next) => {
   //path parameter는 앞의 이름의 idx가 일반적, body로 받아야함
-  const sql = `SELECT C.idx, C.content, C.created_at, C.account_idx, C.comment_likes, A.nickname
-          FROM backend.comment C JOIN backend.account A ON C.account_idx = A.idx
-          WHERE C.post_idx = $1 ORDER BY C.idx LIMIT 5 OFFSET($2 -1) * 5`;
   const { postIdx, pageNumber } = req.body;
   const result = {
     success: false,
     data: {},
   };
   try {
-    const comment = await pool.query(sql, [postIdx, pageNumber]);
+    const comment = await pool.query(
+      `SELECT C.idx, C.content, C.created_at, C.account_idx, C.comment_likes, A.nickname
+    FROM backend.comment C JOIN backend.account A ON C.account_idx = A.idx
+    WHERE C.post_idx = $1 ORDER BY C.idx LIMIT 5 OFFSET($2 -1) * 5`,
+      [postIdx, pageNumber]
+    );
     result.success = true;
     result.data = comment.rows;
+    res.result = result;
     res.send(result);
   } catch (e) {
     return next(e);
@@ -99,24 +89,15 @@ router.put(
     };
 
     try {
-      const loginUser = req.loginUser;
+      const loginUser = req.decoded;
 
       await query(
         `UPDATE backend.comment SET content=$1 WHERE idx = $2 AND account_idx =$3`,
         [content, commentIdx, loginUser.idx]
       );
 
-      await loggingModel.create({
-        type: "PUT/ comment",
-        client: loginUser.idx,
-        client_ip: requestIp.getClientIp(req),
-        request: req.body,
-        response: {
-          success: true,
-          data: {},
-        },
-      });
       result.success = true;
+      res.result = result;
       res.send(result);
     } catch (e) {
       return next(e);
@@ -133,23 +114,15 @@ router.delete("/", checkLogin, async (req, res, next) => {
   };
 
   try {
-    const loginUser = req.loginUser;
+    const loginUser = req.decoded;
 
     await query(
       `DELETE FROM backend.comment WHERE idx = $1 AND account_idx =$2`,
       [commentIdx, loginUser.idx]
     );
-    await loggingModel.create({
-      type: "DELETE/ comment",
-      client: loginUser.idx,
-      client_ip: requestIp.getClientIp(req),
-      request: req.body,
-      response: {
-        success: true,
-        data: {},
-      },
-    });
+
     result.success = true;
+    res.result = result;
     res.send(result);
   } catch (e) {
     next(e);
@@ -165,7 +138,7 @@ router.put("/likes", checkLogin, async (req, res, next) => {
   };
   const poolClient = pool.connect();
   try {
-    const loginUser = req.loginUser;
+    const loginUser = req.decoded;
 
     await poolClient.query("BEGIN");
     const isLikers = await poolClient.query(
@@ -198,24 +171,13 @@ router.put("/likes", checkLogin, async (req, res, next) => {
     await poolClient.query("COMMIT");
     (await poolClient).release();
 
-    await loggingModel.create({
-      type: "PUT/ comment/likes",
-      client: loginUser.idx,
-      client_ip: requestIp.getClientIp(req),
-      request: req.body,
-      response: {
-        success: true,
-        data: {},
-      },
-    });
-
     result.success = true;
+    res.result = result;
     res.send(result);
   } catch (e) {
     await poolClient.query("ROLLBACK");
     (await poolClient).release();
     return next(e);
-  } finally {
   }
 });
 
