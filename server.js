@@ -72,6 +72,7 @@ app.use("/refresh-token", refreshTokenApi);
 app.use((req, res, next) => {
   throw new NotFoundException("API가 없습니다.");
 });
+
 app.use(async (err, req, res, next) => {
   if (err instanceof Exception) {
     // early return pattern
@@ -86,10 +87,28 @@ app.use(async (err, req, res, next) => {
     });
   }
 
-  // postgresSQL, session
-  res.status(500).send({
-    message: "진짜 에러",
-  });
+  const { deleteS3 } = require("./src/middlewares/multerS3.js");
+  const isFile = req.file?.location || null;
+  if (isFile) {
+    const ObjectURL = isFile.split("/")[3];
+    const fileName =
+      ObjectURL.split("_")[0] + "_" + decodeURI(ObjectURL.split("_")[1]);
+    await deleteS3.deleteObject(
+      {
+        Bucket: process.env.BUCKET_NAME,
+        Key: fileName,
+      },
+      function (err, data) {
+        if (err) {
+          console.log(err);
+        }
+      }
+    );
+
+    res.status(500).send({
+      message: err.message,
+    });
+  }
 });
 
 //Web Server 실행 코드

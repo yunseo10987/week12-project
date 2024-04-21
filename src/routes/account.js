@@ -8,7 +8,7 @@ const { body } = require("express-validator");
 const validate = require("../middlewares/validationResult");
 const todayVisitorModule = require("../utils/todayVisitorModule");
 const loginUserListModule = require("../utils/loginUserListModule");
-const multerS3 = require("../middlewares/multerS3");
+const { uploadS3, deleteS3 } = require("../middlewares/multerS3");
 const aws = require("aws-sdk");
 const { NotFoundException } = require("../utils/Exception");
 
@@ -89,7 +89,7 @@ router.delete("/logout", checkLogin, async (req, res, next) => {
 router.post(
   "/",
   //   upload.single("images"),
-  multerS3.single("images"),
+  uploadS3.single("images"),
   body("id")
     .trim()
     .matches(/^(?=.*\d)(?=.*[a-z])[0-9a-z]{8,12}$/)
@@ -122,7 +122,6 @@ router.post(
 
     try {
       let filePath = req.file?.location || null;
-
       await pool.query(
         `INSERT INTO backend.account(id, password, name, birth, phonenumber, email, nickname, gender, profile_image) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [id, pw, name, birth, phoneNumber, email, nickname, gender, filePath]
@@ -141,27 +140,30 @@ router.post(
 //회원 탈퇴
 router.delete("/", checkLogin, async (req, res, next) => {
   try {
-    const s3 = new aws.S3();
-
     const loginUser = req.decoded;
-
     const profileURL = await pool.query(
       `DELETE FROM backend.account WHERE idx = $1 RETURNING profile_image`,
       [loginUser.idx]
     );
-    await s3.deleteObject(
-      {
-        Bucket: process.env.BUCKET_NAME,
-        Key: "1712945801078_인겜 1주차.jpg",
-      },
-      function (err, data) {
-        if (err) {
-          console.log(err);
-        }
-      }
-    );
-    res.clearCookie("access_token");
+    const isProfile = profileURL.rows[0].profile_image || null;
+    if (isProfile) {
+      const ObjectURL = isProfile.split("/")[3];
+      const fileName =
+        ObjectURL.split("_")[0] + "_" + decodeURI(ObjectURL.split("_")[1]);
 
+      await deleteS3.deleteObject(
+        {
+          Bucket: process.env.BUCKET_NAME,
+          Key: fileName,
+        },
+        function (err, data) {
+          if (err) {
+            console.log(err);
+          }
+        }
+      );
+    }
+    res.clearCookie("access_token");
     res.send({
       success: true,
       data: {},
@@ -253,7 +255,8 @@ router.get("/", checkLogin, async (req, res, next) => {
     if (!account) {
       throw new NotFoundException("계정을 찾을 수 없습니다.");
     }
-    console.log(account.profile_image.split("/"));
+
+    const fileName = account.profile_image.split("/")[3];
 
     res.send({
       success: true,
